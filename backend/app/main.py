@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.middleware.auth import AppleAuthMiddleware
 from app.models.database import init_db
-from app.routers import health, projects, search, sync_health, tagging, upload
+from app.routers import auth, health, projects, search, sync_health, tagging, upload
 
 
 @asynccontextmanager
@@ -40,6 +40,7 @@ app.add_middleware(AppleAuthMiddleware)
 # Routers
 # ---------------------------------------------------------------------------
 app.include_router(health.router)
+app.include_router(auth.router)
 app.include_router(upload.router)
 app.include_router(projects.router)
 app.include_router(tagging.router)

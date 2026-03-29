@@ -9,6 +9,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate, @unchecked Sendable {
     static let backgroundSyncTaskID = "com.rawcut.app.sync"
     static let backgroundProcessingTaskID = "com.rawcut.app.processing"
 
+    // Set from RawcutApp after services are initialized
+    weak var syncEngine: SyncEngine?
+
     // MARK: - UIApplicationDelegate
 
     func application(
@@ -26,7 +29,6 @@ final class AppDelegate: NSObject, UIApplicationDelegate, @unchecked Sendable {
     ) {
         let token = deviceToken.map { String(format: "%02.2hhx", $0) }.joined()
         print("[Rawcut] APNs device token: \(token)")
-        // TODO: Send token to backend
     }
 
     func application(
@@ -73,30 +75,34 @@ final class AppDelegate: NSObject, UIApplicationDelegate, @unchecked Sendable {
     private func handleBackgroundSync(task: BGAppRefreshTask) {
         scheduleBackgroundSync()
 
+        let engine = syncEngine
         let syncTask = Task {
-            // TODO: Perform incremental media sync
+            await engine?.performBackgroundSync()
             task.setTaskCompleted(success: true)
         }
 
         task.expirationHandler = {
             syncTask.cancel()
+            task.setTaskCompleted(success: false)
         }
     }
 
     private func handleBackgroundProcessing(task: BGProcessingTask) {
+        let engine = syncEngine
         let processingTask = Task {
-            // TODO: Perform heavy processing (thumbnail generation, etc.)
+            await engine?.performBackgroundSync()
             task.setTaskCompleted(success: true)
         }
 
         task.expirationHandler = {
             processingTask.cancel()
+            task.setTaskCompleted(success: false)
         }
     }
 
     func scheduleBackgroundSync() {
         let request = BGAppRefreshTaskRequest(identifier: Self.backgroundSyncTaskID)
-        request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60) // 15 minutes
+        request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60)
         do {
             try BGTaskScheduler.shared.submit(request)
         } catch {

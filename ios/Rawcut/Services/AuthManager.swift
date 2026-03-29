@@ -12,10 +12,20 @@ final class AuthManager: NSObject, ObservableObject {
     private static let service = "com.rawcut.app"
     private static let userIDKey = "apple_user_id"
     private static let nameKey = "apple_display_name"
+    private static let serverTokenKey = "server_jwt_token"
+
+    private static let backendBaseURL = "https://rawcut-api.wittygrass-ccc95e2e.koreacentral.azurecontainerapps.io"
 
     override init() {
         super.init()
         restoreSession()
+    }
+
+    // MARK: - Auth Token
+
+    /// Server-issued JWT to use as Bearer token for all API calls.
+    var authToken: String? {
+        readKeychainItem(key: Self.serverTokenKey)
     }
 
     // MARK: - Sign in with Apple
@@ -33,6 +43,7 @@ final class AuthManager: NSObject, ObservableObject {
     func signOut() {
         deleteKeychainItem(key: Self.userIDKey)
         deleteKeychainItem(key: Self.nameKey)
+        deleteKeychainItem(key: Self.serverTokenKey)
         isAuthenticated = false
         userIdentifier = nil
         displayName = nil
@@ -41,7 +52,8 @@ final class AuthManager: NSObject, ObservableObject {
     // MARK: - Session Persistence
 
     private func restoreSession() {
-        guard let storedUserID = readKeychainItem(key: Self.userIDKey) else { return }
+        guard let storedUserID = readKeychainItem(key: Self.userIDKey),
+              readKeychainItem(key: Self.serverTokenKey) != nil else { return }
 
         let provider = ASAuthorizationAppleIDProvider()
         provider.getCredentialState(forUserID: storedUserID) { [weak self] state, _ in
@@ -55,6 +67,42 @@ final class AuthManager: NSObject, ObservableObject {
                     self?.signOut()
                 }
             }
+        }
+    }
+
+    // MARK: - Token Exchange
+
+    private func exchangeAppleToken(identityToken: String) async {
+        guard let url = URL(string: "\(Self.backendBaseURL)/api/auth/token") else { return }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        struct TokenRequest: Encodable {
+            let identity_token: String
+        }
+        guard let body = try? JSONEncoder().encode(TokenRequest(identity_token: identityToken)) else { return }
+        request.httpBody = body
+
+        do {
+            let (responseData, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse,
+                  httpResponse.statusCode == 200 else {
+                print("[Rawcut] Token exchange failed: non-200 response")
+                return
+            }
+
+            struct TokenResponse: Decodable {
+                let access_token: String
+                let user_id: String
+            }
+
+            let tokenResponse = try JSONDecoder().decode(TokenResponse.self, from: responseData)
+            saveKeychainItem(key: Self.serverTokenKey, value: tokenResponse.access_token)
+            print("[Rawcut] Server JWT obtained for user \(tokenResponse.user_id)")
+        } catch {
+            print("[Rawcut] Token exchange error: \(error)")
         }
     }
 
@@ -117,6 +165,10 @@ extension AuthManager: ASAuthorizationControllerDelegate {
                 .joined(separator: " ")
         }
 
+        let identityToken: String? = credential.identityToken.flatMap {
+            String(data: $0, encoding: .utf8)
+        }
+
         Task { @MainActor in
             saveKeychainItem(key: Self.userIDKey, value: userID)
             if let name, !name.isEmpty {
@@ -124,6 +176,11 @@ extension AuthManager: ASAuthorizationControllerDelegate {
             }
             userIdentifier = userID
             displayName = name ?? readKeychainItem(key: Self.nameKey)
+
+            if let token = identityToken {
+                await exchangeAppleToken(identityToken: token)
+            }
+
             isAuthenticated = true
         }
     }

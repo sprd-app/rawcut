@@ -137,8 +137,7 @@ final class UploadManager: NSObject, Sendable {
 
     @MainActor
     private func authToken() -> String? {
-        // In production this would return a JWT; for now use the Apple user ID
-        authManager.userIdentifier
+        authManager.authToken
     }
 }
 

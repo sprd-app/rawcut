@@ -83,14 +83,37 @@ async def verify_apple_token(token: str) -> dict[str, Any]:
     return claims
 
 
+async def verify_server_token(token: str) -> dict[str, Any]:
+    """Verify a server-issued HS256 JWT and return its claims."""
+    try:
+        claims: dict[str, Any] = jwt.decode(
+            token,
+            settings.SECRET_KEY,
+            algorithms=["HS256"],
+        )
+        return claims
+    except JWTError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid token: {exc}",
+        ) from exc
+
+
 # Paths that skip authentication
-_PUBLIC_PATHS: set[str] = {"/health", "/docs", "/openapi.json", "/redoc"}
+_PUBLIC_PATHS: set[str] = {
+    "/health",
+    "/docs",
+    "/openapi.json",
+    "/redoc",
+    "/api/auth/token",
+}
 
 
 class AppleAuthMiddleware(BaseHTTPMiddleware):
-    """Starlette middleware that enforces Apple ID token auth.
+    """Starlette middleware that enforces server JWT auth.
 
     Attaches ``request.state.user_id`` for downstream handlers.
+    Token is obtained by calling POST /api/auth/token with an Apple identity token.
     """
 
     async def dispatch(
@@ -113,8 +136,8 @@ class AppleAuthMiddleware(BaseHTTPMiddleware):
             )
 
         token = auth_header.removeprefix("Bearer ").strip()
-        claims = await verify_apple_token(token)
+        claims = await verify_server_token(token)
 
-        # Apple's subject claim is the stable user identifier
+        # Server JWT subject is the stable Apple user identifier
         request.state.user_id = claims.get("sub", "")
         return await call_next(request)

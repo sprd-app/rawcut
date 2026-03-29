@@ -45,6 +45,8 @@ struct RawcutApp: App {
                 .environmentObject(authManager)
                 .preferredColorScheme(.dark)
                 .task {
+                    // Wire SyncEngine to AppDelegate for background task handling
+                    appDelegate.syncEngine = syncEngine
                     // NetworkMonitor starts automatically in init()
                     // Check current photo authorization (don't auto-request, let UI handle it)
                     photoObserver.refreshAuthorizationStatus()

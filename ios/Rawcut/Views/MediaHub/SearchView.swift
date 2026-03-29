@@ -15,6 +15,7 @@ struct SearchView: View {
     @State private var searchTask: Task<Void, Never>?
 
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var authManager: AuthManager
 
     private let columns = Array(
         repeating: GridItem(.flexible(), spacing: 2),
@@ -188,14 +189,26 @@ struct SearchView: View {
             throw URLError(.badURL)
         }
 
-        let (data, response) = try await URLSession.shared.data(from: url)
+        var request = URLRequest(url: url)
+        if let token = authManager.authToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        let (data, response) = try await URLSession.shared.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
             throw URLError(.badServerResponse)
         }
 
-        // Decode response and match to local assets
-        let identifiers = try JSONDecoder().decode([String].self, from: data)
-        return allAssets.filter { identifiers.contains($0.localIdentifier) }
+        struct BackendAsset: Decodable {
+            let blob_name: String
+        }
+
+        let backendAssets = try JSONDecoder().decode([BackendAsset].self, from: data)
+        let blobNames = Set(backendAssets.map { $0.blob_name })
+        return allAssets.filter { asset in
+            guard let blobName = asset.cloudBlobName else { return false }
+            return blobNames.contains(blobName)
+        }
     }
 
     private func matchingTag(for asset: MediaAsset) -> String? {
