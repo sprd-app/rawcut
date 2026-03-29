@@ -1,19 +1,15 @@
-FROM python:3.13-slim AS base
+FROM python:3.13-slim
 
 WORKDIR /app
 
-# Install system deps (none needed for slim, but leave hook for future)
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python deps
-COPY pyproject.toml ./
-RUN pip install --no-cache-dir .
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
 COPY app/ ./app/
 
-# Create a non-root user
 RUN useradd --create-home appuser
 USER appuser
 

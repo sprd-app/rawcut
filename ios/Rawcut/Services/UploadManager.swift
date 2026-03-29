@@ -49,7 +49,7 @@ final class UploadManager: NSObject, Sendable {
     private let authManager: AuthManager
     private let baseURL: URL
 
-    init(authManager: AuthManager, baseURL: URL = URL(string: "https://api.rawcut.app")!) {
+    init(authManager: AuthManager, baseURL: URL = URL(string: "https://rawcut-api.proudwave-ee2cbc0d.koreacentral.azurecontainerapps.io")!) {
         self.authManager = authManager
         self.baseURL = baseURL
 
