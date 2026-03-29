@@ -100,6 +100,11 @@ class AppleAuthMiddleware(BaseHTTPMiddleware):
         if request.method == "OPTIONS" or request.url.path in _PUBLIC_PATHS:
             return await call_next(request)
 
+        # Dev mode: skip auth, use fixed dev user
+        if settings.DEV_MODE:
+            request.state.user_id = "dev-user-001"
+            return await call_next(request)
+
         auth_header = request.headers.get("Authorization", "")
         if not auth_header.startswith("Bearer "):
             raise HTTPException(

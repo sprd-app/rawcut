@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = "sqlite+aiosqlite:///rawcut.db"
 
+    # Dev mode: skip auth token verification, use a fixed dev user
+    DEV_MODE: bool = False
+
     # Internal signing
     SECRET_KEY: str = "change-me-to-a-random-secret"
 

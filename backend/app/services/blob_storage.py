@@ -88,7 +88,8 @@ async def upload_stream(
         await blob.commit_block_list(block_ids)
 
         # Set content type after commit
-        await blob.set_http_headers(content_settings={"content_type": content_type})
+        from azure.storage.blob import ContentSettings
+        await blob.set_http_headers(content_settings=ContentSettings(content_type=content_type))
 
         return {"blob_name": blob_name, "size": total_size, "etag": ""}
 
