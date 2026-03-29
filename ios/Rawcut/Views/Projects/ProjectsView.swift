@@ -98,6 +98,7 @@ struct ProjectsView: View {
                     .fill(Color.rcSurface)
             )
         }
+        .buttonStyle(.plain)
         .disabled(isAutoVideoLoading)
         .accessibilityLabel("Make Today's Video")
         .accessibilityHint("One tap to automatically create a cinematic video")
