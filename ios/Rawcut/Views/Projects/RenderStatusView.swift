@@ -139,7 +139,7 @@ struct RenderStatusView: View {
                         .tint(.black)
                 } else {
                     Image(systemName: "square.and.arrow.up")
-                    Text("공유 & 저장")
+                    Text("Share & Save")
                         .font(.rcBodyMedium)
                 }
                 Spacer()
@@ -162,7 +162,7 @@ struct RenderStatusView: View {
             HStack {
                 Spacer()
                 Image(systemName: "paintbrush")
-                Text("다른 느낌으로")
+                Text("Try Different Look")
                     .font(.rcBodyMedium)
                 Spacer()
             }
@@ -277,7 +277,7 @@ struct RenderStatusView: View {
                 }
             }
         } catch {
-            errorMessage = "다운로드에 실패했습니다."
+            errorMessage = "Download failed."
             print("[Rawcut] Download failed: \(error)")
         }
     }
@@ -298,7 +298,7 @@ struct RenderStatusView: View {
             isPolling = true
             await pollRenderStatus()
         } catch {
-            errorMessage = "재렌더링 시작에 실패했습니다."
+            errorMessage = "Failed to start re-render."
             print("[Rawcut] Re-render failed: \(error)")
         }
         isReRendering = false
