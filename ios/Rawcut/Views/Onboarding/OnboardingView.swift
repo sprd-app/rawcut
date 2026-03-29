@@ -170,7 +170,7 @@ struct OnboardingView: View {
     }
 
     private func completeOnboarding() {
-        UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
+        UserDefaults.standard.set(true, forKey: UserDefaults.Keys.hasCompletedOnboarding)
         withAnimation {
             isOnboardingComplete = true
         }

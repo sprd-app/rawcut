@@ -3,7 +3,7 @@ import SwiftUI
 struct ContentView: View {
     @State private var selectedTab: Tab = .library
     @State private var isOnboardingComplete: Bool =
-        UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
+        UserDefaults.standard.bool(forKey: UserDefaults.Keys.hasCompletedOnboarding)
 
     enum Tab: Hashable {
         case library
@@ -83,6 +83,14 @@ private struct ProjectsPlaceholderView: View {
             )
         }
         .navigationTitle("Projects")
+    }
+}
+
+// MARK: - UserDefaults Keys
+
+extension UserDefaults {
+    enum Keys {
+        static let hasCompletedOnboarding = "hasCompletedOnboarding"
     }
 }
 
