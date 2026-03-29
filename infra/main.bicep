@@ -3,6 +3,9 @@
 
 param location string = resourceGroup().location
 param environmentName string = 'rawcut'
+param openaiApiKey string
+param secretKey string
+param acrPassword string
 
 // Storage Account (Blob + CDN)
 resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
@@ -110,10 +113,29 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
         targetPort: 8000
         transport: 'http'
       }
+      registries: [
+        {
+          server: 'rawcutapi2025.azurecr.io'
+          username: 'rawcutapi2025'
+          passwordSecretRef: 'acr-password'
+        }
+      ]
       secrets: [
         {
           name: 'azure-storage-connection'
-          value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};AccountKey=${storageAccount.listKeys().keys[0].value}'
+          value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};AccountKey=${storageAccount.listKeys().keys[0].value};EndpointSuffix=core.windows.net'
+        }
+        {
+          name: 'openai-api-key'
+          value: openaiApiKey
+        }
+        {
+          name: 'secret-key'
+          value: secretKey
+        }
+        {
+          name: 'acr-password'
+          value: acrPassword
         }
       ]
     }
@@ -121,7 +143,7 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
       containers: [
         {
           name: 'api'
-          image: 'rawcut-api:latest'
+          image: 'rawcutapi2025.azurecr.io/rawcut-api:latest'
           resources: {
             cpu: json('0.5')
             memory: '1Gi'
@@ -130,6 +152,18 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
             {
               name: 'AZURE_STORAGE_CONNECTION_STRING'
               secretRef: 'azure-storage-connection'
+            }
+            {
+              name: 'AZURE_STORAGE_CONTAINER'
+              value: 'media-hot'
+            }
+            {
+              name: 'OPENAI_API_KEY'
+              secretRef: 'openai-api-key'
+            }
+            {
+              name: 'SECRET_KEY'
+              secretRef: 'secret-key'
             }
           ]
         }
