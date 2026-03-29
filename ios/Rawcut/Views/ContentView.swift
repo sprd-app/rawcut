@@ -2,6 +2,8 @@ import SwiftUI
 
 struct ContentView: View {
     @State private var selectedTab: Tab = .library
+    @State private var isOnboardingComplete: Bool =
+        UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
 
     enum Tab: Hashable {
         case library
@@ -16,7 +18,7 @@ struct ContentView: View {
                 MediaHubView()
             }
             .tabItem {
-                Label("Library", systemImage: "photo.on.rectangle.angled")
+                Label("라이브러리", systemImage: "photo.on.rectangle.angled")
             }
             .tag(Tab.library)
 
@@ -24,7 +26,7 @@ struct ContentView: View {
                 CreatePlaceholderView()
             }
             .tabItem {
-                Label("Create", systemImage: "plus.circle.fill")
+                Label("만들기", systemImage: "plus.circle.fill")
             }
             .tag(Tab.create)
 
@@ -32,19 +34,25 @@ struct ContentView: View {
                 ProjectsPlaceholderView()
             }
             .tabItem {
-                Label("Projects", systemImage: "film.stack")
+                Label("프로젝트", systemImage: "film.stack")
             }
             .tag(Tab.projects)
 
             NavigationStack {
-                SettingsPlaceholderView()
+                SettingsView()
             }
             .tabItem {
-                Label("Settings", systemImage: "gearshape")
+                Label("설정", systemImage: "gearshape")
             }
             .tag(Tab.settings)
         }
         .tint(Color.rcAccent)
+        .fullScreenCover(isPresented: Binding(
+            get: { !isOnboardingComplete },
+            set: { isOnboardingComplete = !$0 }
+        )) {
+            OnboardingView(isOnboardingComplete: $isOnboardingComplete)
+        }
     }
 }
 
@@ -54,21 +62,13 @@ private struct CreatePlaceholderView: View {
     var body: some View {
         ZStack {
             Color.rcBackground.ignoresSafeArea()
-            VStack(spacing: Spacing.lg) {
-                Image(systemName: "plus.circle")
-                    .font(.system(size: 64, weight: .ultraLight))
-                    .foregroundStyle(Color.rcTextTertiary)
-                Text("Create a Vlog")
-                    .font(.rcTitleMedium)
-                    .foregroundStyle(Color.rcTextPrimary)
-                Text("Select footage, write a script, and let rawcut handle the rest.")
-                    .font(.rcBody)
-                    .foregroundStyle(Color.rcTextSecondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, Spacing.xl)
-            }
+            EmptyStateView(
+                icon: "plus.circle",
+                title: "브이로그 만들기",
+                description: "영상을 선택하고 스크립트를 작성하면, rawcut이 나머지를 처리합니다."
+            )
         }
-        .navigationTitle("Create")
+        .navigationTitle("만들기")
     }
 }
 
@@ -76,39 +76,13 @@ private struct ProjectsPlaceholderView: View {
     var body: some View {
         ZStack {
             Color.rcBackground.ignoresSafeArea()
-            VStack(spacing: Spacing.lg) {
-                Image(systemName: "film.stack")
-                    .font(.system(size: 64, weight: .ultraLight))
-                    .foregroundStyle(Color.rcTextTertiary)
-                Text("No Projects Yet")
-                    .font(.rcTitleMedium)
-                    .foregroundStyle(Color.rcTextPrimary)
-                Text("Your finished vlogs will appear here.")
-                    .font(.rcBody)
-                    .foregroundStyle(Color.rcTextSecondary)
-            }
+            EmptyStateView(
+                icon: "film.stack",
+                title: "프로젝트가 없습니다",
+                description: "완성된 브이로그가 여기에 표시됩니다."
+            )
         }
-        .navigationTitle("Projects")
-    }
-}
-
-private struct SettingsPlaceholderView: View {
-    var body: some View {
-        ZStack {
-            Color.rcBackground.ignoresSafeArea()
-            VStack(spacing: Spacing.lg) {
-                Image(systemName: "gearshape")
-                    .font(.system(size: 64, weight: .ultraLight))
-                    .foregroundStyle(Color.rcTextTertiary)
-                Text("Settings")
-                    .font(.rcTitleMedium)
-                    .foregroundStyle(Color.rcTextPrimary)
-                Text("Account, sync preferences, and storage management.")
-                    .font(.rcBody)
-                    .foregroundStyle(Color.rcTextSecondary)
-            }
-        }
-        .navigationTitle("Settings")
+        .navigationTitle("프로젝트")
     }
 }
 

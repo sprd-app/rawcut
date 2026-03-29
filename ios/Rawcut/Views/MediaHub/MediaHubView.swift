@@ -5,6 +5,14 @@ struct MediaHubView: View {
     @Query(sort: \MediaAsset.createdDate, order: .reverse)
     private var assets: [MediaAsset]
 
+    @State private var selectedViewMode: ViewMode = .grid
+    @State private var isRefreshing = false
+
+    enum ViewMode: String, CaseIterable {
+        case grid = "그리드"
+        case timeline = "타임라인"
+    }
+
     private let columns = Array(
         repeating: GridItem(.flexible(), spacing: 2),
         count: 3
@@ -14,81 +22,117 @@ struct MediaHubView: View {
         ZStack {
             Color.rcBackground.ignoresSafeArea()
 
-            if assets.isEmpty {
-                emptyState
-            } else {
-                ScrollView {
-                    LazyVGrid(columns: columns, spacing: 2) {
-                        ForEach(assets) { asset in
-                            ThumbnailCell(asset: asset)
-                        }
+            VStack(spacing: 0) {
+                // Sync status bar
+                syncStatusBar
+
+                // Segmented control
+                Picker("보기 모드", selection: $selectedViewMode) {
+                    ForEach(ViewMode.allCases, id: \.self) { mode in
+                        Text(mode.rawValue).tag(mode)
                     }
-                    .padding(.horizontal, 2)
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, Spacing.lg)
+                .padding(.vertical, Spacing.sm)
+
+                // Content
+                if assets.isEmpty {
+                    Spacer()
+                    EmptyStateView(
+                        icon: "photo.on.rectangle.angled",
+                        title: "미디어 라이브러리",
+                        description: "사진 라이브러리 접근 권한을 허용해 주세요.",
+                        actionTitle: "사진 라이브러리 열기",
+                        action: {
+                            // TODO: Request PHPhotoLibrary access
+                        }
+                    )
+                    Spacer()
+                } else {
+                    switch selectedViewMode {
+                    case .grid:
+                        gridView
+                    case .timeline:
+                        TimelineView()
+                    }
                 }
             }
         }
         .navigationTitle("rawcut")
         .toolbarColorScheme(.dark, for: .navigationBar)
-    }
-
-    private var emptyState: some View {
-        VStack(spacing: Spacing.lg) {
-            Image(systemName: "photo.on.rectangle.angled")
-                .font(.system(size: 64, weight: .ultraLight))
-                .foregroundStyle(Color.rcTextTertiary)
-            Text("Your Media Library")
-                .font(.rcTitleMedium)
-                .foregroundStyle(Color.rcTextPrimary)
-            Text("Grant photo library access to get started.")
-                .font(.rcBody)
-                .foregroundStyle(Color.rcTextSecondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, Spacing.xl)
-            Button {
-                // TODO: Request PHPhotoLibrary access
-            } label: {
-                Text("Open Photo Library")
-                    .font(.rcBody)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.black)
-                    .padding(.horizontal, Spacing.xl)
-                    .padding(.vertical, Spacing.md)
-                    .background(Color.rcAccent, in: Capsule())
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                NavigationLink {
+                    SearchView()
+                } label: {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(Color.rcTextPrimary)
+                }
+                .accessibilityLabel("검색")
             }
         }
     }
-}
 
-// MARK: - Thumbnail Cell
+    // MARK: - Sync Status Bar
 
-private struct ThumbnailCell: View {
-    let asset: MediaAsset
+    private var syncStatusBar: some View {
+        let uploadingCount = assets.filter { $0.syncStatus == .uploading }.count
+        let failedCount = assets.filter { $0.syncStatus == .failed }.count
+        let syncedCount = assets.filter { $0.syncStatus == .synced }.count
 
-    var body: some View {
-        ZStack(alignment: .bottomTrailing) {
-            Rectangle()
-                .fill(Color.rcSurface)
-                .aspectRatio(1, contentMode: .fit)
-                .overlay {
-                    Image(systemName: asset.mediaType == .video ? "video.fill" : "photo")
+        return Group {
+            if uploadingCount > 0 || failedCount > 0 {
+                HStack(spacing: Spacing.sm) {
+                    if uploadingCount > 0 {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .foregroundStyle(Color.rcWarning)
+                        Text("업로드 중 \(uploadingCount)개")
+                            .font(.rcCaption)
+                            .foregroundStyle(Color.rcTextSecondary)
+                    }
+                    if failedCount > 0 {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .foregroundStyle(Color.rcError)
+                        Text("실패 \(failedCount)개")
+                            .font(.rcCaption)
+                            .foregroundStyle(Color.rcTextSecondary)
+                    }
+                    Spacer()
+                    Text("\(syncedCount)개 동기화 완료")
+                        .font(.rcCaption)
                         .foregroundStyle(Color.rcTextTertiary)
                 }
-
-            // Sync status indicator
-            Circle()
-                .fill(syncColor)
-                .frame(width: 8, height: 8)
-                .padding(6)
+                .padding(.horizontal, Spacing.lg)
+                .padding(.vertical, Spacing.sm)
+                .background(Color.rcSurface)
+                .accessibilityElement(children: .combine)
+            }
         }
     }
 
-    private var syncColor: Color {
-        switch asset.syncStatus {
-        case .synced: Color.rcAccent
-        case .uploading: Color.rcWarning
-        case .failed: Color.rcError
-        case .pending: Color.rcTextTertiary
+    // MARK: - Grid View with Pull-to-Refresh
+
+    private var gridView: some View {
+        ScrollView {
+            LazyVGrid(columns: columns, spacing: 2) {
+                ForEach(assets) { asset in
+                    AssetThumbnailView(asset: asset)
+                }
+            }
+            .padding(.horizontal, 2)
         }
+        .refreshable {
+            // Trigger manual sync
+            await performRefresh()
+        }
+    }
+
+    private func performRefresh() async {
+        isRefreshing = true
+        // Allow the sync engine to pick up; simulate a brief wait
+        try? await Task.sleep(for: .seconds(1))
+        isRefreshing = false
     }
 }
 

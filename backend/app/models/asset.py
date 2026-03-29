@@ -55,3 +55,9 @@ class MediaAssetResponse(BaseModel):
     sync_status: SyncStatus
     created_at: datetime
     tags: list[str]
+    content_type: str | None = None
+    quality_score: float | None = None
+    energy_level: float | None = None
+    emotion: str | None = None
+    description: str | None = None
+    tagged_at: str | None = None
