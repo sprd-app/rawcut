@@ -5,8 +5,10 @@ struct MediaHubView: View {
     @Query(sort: \MediaAsset.createdDate, order: .reverse)
     private var assets: [MediaAsset]
 
+    @EnvironmentObject private var syncEngine: SyncEngine
+    @EnvironmentObject private var photoObserver: PhotoLibraryObserver
+
     @State private var selectedViewMode: ViewMode = .grid
-    @State private var isRefreshing = false
 
     enum ViewMode: String, CaseIterable {
         case grid = "Grid"
@@ -23,8 +25,10 @@ struct MediaHubView: View {
             Color.rcBackground.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // Sync status bar
-                syncStatusBar
+                // Sync status bar (only when syncing)
+                if syncEngine.isSyncing || assets.contains(where: { $0.syncStatus == .failed }) {
+                    SyncStatusBar()
+                }
 
                 // Segmented control
                 Picker("View Mode", selection: $selectedViewMode) {
@@ -39,15 +43,30 @@ struct MediaHubView: View {
                 // Content
                 if assets.isEmpty {
                     Spacer()
-                    EmptyStateView(
-                        icon: "photo.on.rectangle.angled",
-                        title: "Media Library",
-                        description: "Please grant access to your photo library.",
-                        actionTitle: "Open Photo Library",
-                        action: {
-                            // TODO: Request PHPhotoLibrary access
-                        }
-                    )
+                    if photoObserver.authorizationStatus == .authorized ||
+                       photoObserver.authorizationStatus == .limited {
+                        EmptyStateView(
+                            icon: "photo.on.rectangle.angled",
+                            title: "No Media Yet",
+                            description: "Photos and videos will appear here as they sync."
+                        )
+                    } else {
+                        EmptyStateView(
+                            icon: "photo.on.rectangle.angled",
+                            title: "Media Library",
+                            description: "Grant access to sync your photos and videos.",
+                            actionTitle: "Grant Photo Access",
+                            action: {
+                                Task {
+                                    await photoObserver.requestAuthorization()
+                                    if photoObserver.authorizationStatus == .authorized ||
+                                       photoObserver.authorizationStatus == .limited {
+                                        syncEngine.startSync()
+                                    }
+                                }
+                            }
+                        )
+                    }
                     Spacer()
                 } else {
                     switch selectedViewMode {
@@ -75,44 +94,7 @@ struct MediaHubView: View {
         }
     }
 
-    // MARK: - Sync Status Bar
-
-    private var syncStatusBar: some View {
-        let uploadingCount = assets.filter { $0.syncStatus == .uploading }.count
-        let failedCount = assets.filter { $0.syncStatus == .failed }.count
-        let syncedCount = assets.filter { $0.syncStatus == .synced }.count
-
-        return Group {
-            if uploadingCount > 0 || failedCount > 0 {
-                HStack(spacing: Spacing.sm) {
-                    if uploadingCount > 0 {
-                        Image(systemName: "arrow.up.circle.fill")
-                            .foregroundStyle(Color.rcWarning)
-                        Text("\(uploadingCount) uploading")
-                            .font(.rcCaption)
-                            .foregroundStyle(Color.rcTextSecondary)
-                    }
-                    if failedCount > 0 {
-                        Image(systemName: "exclamationmark.circle.fill")
-                            .foregroundStyle(Color.rcError)
-                        Text("\(failedCount) failed")
-                            .font(.rcCaption)
-                            .foregroundStyle(Color.rcTextSecondary)
-                    }
-                    Spacer()
-                    Text("\(syncedCount) synced")
-                        .font(.rcCaption)
-                        .foregroundStyle(Color.rcTextTertiary)
-                }
-                .padding(.horizontal, Spacing.lg)
-                .padding(.vertical, Spacing.sm)
-                .background(Color.rcSurface)
-                .accessibilityElement(children: .combine)
-            }
-        }
-    }
-
-    // MARK: - Grid View with Pull-to-Refresh
+    // MARK: - Grid View
 
     private var gridView: some View {
         ScrollView {
@@ -124,22 +106,23 @@ struct MediaHubView: View {
             .padding(.horizontal, 2)
         }
         .refreshable {
-            // Trigger manual sync
-            await performRefresh()
+            syncEngine.startSync()
+            try? await Task.sleep(for: .seconds(1))
         }
-    }
-
-    private func performRefresh() async {
-        isRefreshing = true
-        // Allow the sync engine to pick up; simulate a brief wait
-        try? await Task.sleep(for: .seconds(1))
-        isRefreshing = false
     }
 }
 
 #Preview {
     NavigationStack {
         MediaHubView()
+            .environmentObject(SyncEngine(
+                uploadManager: UploadManager(authManager: AuthManager()),
+                networkMonitor: NetworkMonitor(),
+                modelContainer: try! ModelContainer(for: MediaAsset.self)
+            ))
+            .environmentObject(PhotoLibraryObserver(
+                modelContainer: try! ModelContainer(for: MediaAsset.self)
+            ))
     }
     .modelContainer(for: MediaAsset.self, inMemory: true)
 }

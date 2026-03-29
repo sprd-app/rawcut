@@ -47,6 +47,11 @@ final class PhotoLibraryObserver: NSObject, ObservableObject {
         }
     }
 
+    /// Re-check current authorization status from system.
+    func refreshAuthorizationStatus() {
+        updateAuthorizationStatus()
+    }
+
     private func updateAuthorizationStatus(from phStatus: PHAuthorizationStatus? = nil) {
         let status = phStatus ?? PHPhotoLibrary.authorizationStatus(for: .readWrite)
         switch status {

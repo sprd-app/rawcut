@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct SyncStatusBar: View {
-    @ObservedObject var syncEngine: SyncEngine
+    @EnvironmentObject var syncEngine: SyncEngine
     @State private var isExpanded: Bool = false
     @State private var isPulsing: Bool = false
 
