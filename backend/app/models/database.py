@@ -80,15 +80,37 @@ async def init_db() -> None:
     """Create tables if they do not exist.
 
     Also runs lightweight migrations for columns added after initial schema.
+    Retries on database lock errors (common on Azure File Share).
     """
-    async with aiosqlite.connect(settings.sqlite_path, timeout=10) as db:
-        await db.execute("PRAGMA journal_mode=DELETE")
-        await db.execute("PRAGMA busy_timeout=5000")
-        for statement in _SCHEMA.split(";"):
-            stmt = statement.strip()
-            if stmt:
-                await db.execute(stmt)
-        await db.commit()
+    import os
+    import time
+
+    # Remove stale lock files on Azure File Share
+    db_path = settings.sqlite_path
+    for suffix in ("-wal", "-shm", "-journal"):
+        lock_file = db_path + suffix
+        try:
+            os.remove(lock_file)
+        except OSError:
+            pass
+
+    for attempt in range(5):
+        try:
+            async with aiosqlite.connect(db_path, timeout=10) as db:
+                await db.execute("PRAGMA journal_mode=DELETE")
+                await db.execute("PRAGMA busy_timeout=5000")
+                for statement in _SCHEMA.split(";"):
+                    stmt = statement.strip()
+                    if stmt:
+                        await db.execute(stmt)
+                await db.commit()
+            break  # success
+        except Exception as e:
+            if attempt < 4:
+                import asyncio
+                await asyncio.sleep(2)
+            else:
+                raise
 
         # Migrate existing DBs: add columns that may not exist yet.
         _migrations = [
