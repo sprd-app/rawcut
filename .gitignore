@@ -42,3 +42,5 @@ openai.json
 
 # gstack
 .gstack/
+__pycache__/
+prototypes/
