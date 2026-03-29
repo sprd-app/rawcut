@@ -22,7 +22,7 @@ struct SettingsView: View {
             .scrollContentBackground(.hidden)
             .listStyle(.insetGrouped)
         }
-        .navigationTitle("설정")
+        .navigationTitle("Settings")
         .toolbarColorScheme(.dark, for: .navigationBar)
     }
 
@@ -37,12 +37,12 @@ struct SettingsView: View {
                     .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: Spacing.xs) {
-                    Text(authManager.displayName ?? "사용자")
+                    Text(authManager.displayName ?? "User")
                         .font(.rcTitleMedium)
                         .foregroundStyle(Color.rcTextPrimary)
 
                     if authManager.isAuthenticated {
-                        Text("Apple로 로그인됨")
+                        Text("Signed in with Apple")
                             .font(.rcCaption)
                             .foregroundStyle(Color.rcTextSecondary)
                     }
@@ -56,14 +56,14 @@ struct SettingsView: View {
                 Button(role: .destructive) {
                     authManager.signOut()
                 } label: {
-                    Text("로그아웃")
+                    Text("Sign Out")
                         .font(.rcBody)
                 }
                 .listRowBackground(Color.rcSurface)
-                .accessibilityLabel("로그아웃")
+                .accessibilityLabel("Sign Out")
             }
         } header: {
-            Text("계정")
+            Text("Account")
                 .font(.rcCaption)
                 .foregroundStyle(Color.rcTextSecondary)
         }
@@ -75,7 +75,7 @@ struct SettingsView: View {
         Section {
             // Storage usage bar
             VStack(alignment: .leading, spacing: Spacing.sm) {
-                Text("저장공간 사용량")
+                Text("Storage Usage")
                     .font(.rcBody)
                     .foregroundStyle(Color.rcTextPrimary)
 
@@ -100,37 +100,37 @@ struct SettingsView: View {
             .padding(.vertical, Spacing.xs)
             .listRowBackground(Color.rcSurface)
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("저장공간 사용량: \(formattedStorageUsed)")
+            .accessibilityLabel("Storage Usage: \(formattedStorageUsed)")
 
             // Cost comparison card
             VStack(alignment: .leading, spacing: Spacing.md) {
-                Text("비용 비교")
+                Text("Cost Comparison")
                     .font(.rcBody)
                     .fontWeight(.semibold)
                     .foregroundStyle(Color.rcTextPrimary)
 
-                costRow(label: "iCloud 비용:", value: iCloudCostString, color: Color.rcTextSecondary)
-                costRow(label: "rawcut 비용:", value: rawcutCostString, color: Color.rcTextSecondary)
+                costRow(label: "iCloud cost:", value: iCloudCostString, color: Color.rcTextSecondary)
+                costRow(label: "rawcut cost:", value: rawcutCostString, color: Color.rcTextSecondary)
 
                 Divider()
                     .overlay(Color.rcSurfaceElevated)
 
                 HStack {
-                    Text("절약 금액:")
+                    Text("You save:")
                         .font(.rcBody)
                         .foregroundStyle(Color.rcTextPrimary)
                     Spacer()
                     Text(savingsString)
-                        .font(.rcTitleMedium)
+                        .font(.rcStat)
                         .foregroundStyle(Color.rcAccent)
                 }
             }
             .padding(.vertical, Spacing.xs)
             .listRowBackground(Color.rcSurface)
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("비용 비교: iCloud \(iCloudCostString), rawcut \(rawcutCostString), 절약 \(savingsString)")
+            .accessibilityLabel("Cost Comparison: iCloud \(iCloudCostString), rawcut \(rawcutCostString), you save \(savingsString)")
         } header: {
-            Text("저장공간")
+            Text("Storage")
                 .font(.rcCaption)
                 .foregroundStyle(Color.rcTextSecondary)
         }
@@ -157,7 +157,7 @@ struct SettingsView: View {
                     .fill(syncHealthColor)
                     .frame(width: 10, height: 10)
 
-                Text("동기화 상태")
+                Text("Sync Status")
                     .font(.rcBody)
                     .foregroundStyle(Color.rcTextPrimary)
 
@@ -169,29 +169,29 @@ struct SettingsView: View {
             }
             .listRowBackground(Color.rcSurface)
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("동기화 상태: \(syncHealthLabel)")
+            .accessibilityLabel("Sync Status: \(syncHealthLabel)")
 
             HStack {
-                Text("마지막 동기화")
+                Text("Last synced")
                     .font(.rcBody)
                     .foregroundStyle(Color.rcTextPrimary)
                 Spacer()
-                Text("5분 전")
+                Text("5 min ago")
                     .font(.rcCaption)
                     .foregroundStyle(Color.rcTextSecondary)
             }
             .listRowBackground(Color.rcSurface)
 
             Toggle(isOn: $syncOnWiFiOnly) {
-                Text("Wi-Fi에서만 동기화")
+                Text("Sync on Wi-Fi only")
                     .font(.rcBody)
                     .foregroundStyle(Color.rcTextPrimary)
             }
             .tint(Color.rcAccent)
             .listRowBackground(Color.rcSurface)
-            .accessibilityLabel("Wi-Fi에서만 동기화")
+            .accessibilityLabel("Sync on Wi-Fi only")
         } header: {
-            Text("동기화")
+            Text("Sync")
                 .font(.rcCaption)
                 .foregroundStyle(Color.rcTextSecondary)
         }
@@ -202,7 +202,7 @@ struct SettingsView: View {
     private var aboutSection: some View {
         Section {
             HStack {
-                Text("버전")
+                Text("Version")
                     .font(.rcBody)
                     .foregroundStyle(Color.rcTextPrimary)
                 Spacer()
@@ -214,7 +214,7 @@ struct SettingsView: View {
 
             Link(destination: URL(string: "https://rawcut.app/privacy")!) {
                 HStack {
-                    Text("개인정보 처리방침")
+                    Text("Privacy Policy")
                         .font(.rcBody)
                         .foregroundStyle(Color.rcTextPrimary)
                     Spacer()
@@ -224,9 +224,9 @@ struct SettingsView: View {
                 }
             }
             .listRowBackground(Color.rcSurface)
-            .accessibilityLabel("개인정보 처리방침 열기")
+            .accessibilityLabel("Open Privacy Policy")
         } header: {
-            Text("정보")
+            Text("About")
                 .font(.rcCaption)
                 .foregroundStyle(Color.rcTextSecondary)
         }
@@ -244,10 +244,10 @@ struct SettingsView: View {
 
     private var formattedStorageUsed: String {
         if totalStorageGB >= 1 {
-            return String(format: "%.1f GB 클라우드에 동기화됨", totalStorageGB)
+            return String(format: "%.1f GB synced to cloud", totalStorageGB)
         } else {
             let mb = totalStorageGB * 1024
-            return String(format: "%.0f MB 클라우드에 동기화됨", mb)
+            return String(format: "%.0f MB synced to cloud", mb)
         }
     }
 
@@ -271,16 +271,16 @@ struct SettingsView: View {
     }
 
     private var iCloudCostString: String {
-        String(format: "$%.2f/월", iCloudCostPerMonth)
+        String(format: "$%.2f/mo", iCloudCostPerMonth)
     }
 
     private var rawcutCostString: String {
-        String(format: "$%.2f/월", rawcutCostPerMonth)
+        String(format: "$%.2f/mo", rawcutCostPerMonth)
     }
 
     private var savingsString: String {
         let savings = max(iCloudCostPerMonth - rawcutCostPerMonth, 0)
-        return String(format: "$%.2f/월", savings)
+        return String(format: "$%.2f/mo", savings)
     }
 
     private var syncHealthColor: Color {
@@ -295,9 +295,9 @@ struct SettingsView: View {
         let failedCount = assets.filter { $0.syncStatus == .failed }.count
         let uploadingCount = assets.filter { $0.syncStatus == .uploading }.count
         let syncedCount = assets.filter { $0.syncStatus == .synced }.count
-        if failedCount > 0 { return "실패 \(failedCount)개" }
-        if uploadingCount > 0 { return "업로드 중 \(uploadingCount)개" }
-        return "완료 \(syncedCount)개"
+        if failedCount > 0 { return "\(failedCount) failed" }
+        if uploadingCount > 0 { return "\(uploadingCount) uploading" }
+        return "\(syncedCount) synced"
     }
 
     private var appVersion: String {

@@ -17,7 +17,7 @@ struct EmptyStateView: View {
                 .accessibilityHidden(true)
 
             Text(title)
-                .font(.rcTitleMedium)
+                .font(.rcDisplayMedium)
                 .foregroundStyle(Color.rcTextPrimary)
                 .multilineTextAlignment(.center)
 
@@ -48,9 +48,9 @@ struct EmptyStateView: View {
         Color.rcBackground.ignoresSafeArea()
         EmptyStateView(
             icon: "photo.on.rectangle.angled",
-            title: "미디어 라이브러리",
-            description: "사진 라이브러리 접근 권한을 허용해 주세요.",
-            actionTitle: "사진 라이브러리 열기",
+            title: "Media Library",
+            description: "Please grant access to your photo library.",
+            actionTitle: "Open Photo Library",
             action: {}
         )
     }

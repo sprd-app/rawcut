@@ -9,8 +9,8 @@ struct MediaHubView: View {
     @State private var isRefreshing = false
 
     enum ViewMode: String, CaseIterable {
-        case grid = "그리드"
-        case timeline = "타임라인"
+        case grid = "Grid"
+        case timeline = "Timeline"
     }
 
     private let columns = Array(
@@ -27,7 +27,7 @@ struct MediaHubView: View {
                 syncStatusBar
 
                 // Segmented control
-                Picker("보기 모드", selection: $selectedViewMode) {
+                Picker("View Mode", selection: $selectedViewMode) {
                     ForEach(ViewMode.allCases, id: \.self) { mode in
                         Text(mode.rawValue).tag(mode)
                     }
@@ -41,9 +41,9 @@ struct MediaHubView: View {
                     Spacer()
                     EmptyStateView(
                         icon: "photo.on.rectangle.angled",
-                        title: "미디어 라이브러리",
-                        description: "사진 라이브러리 접근 권한을 허용해 주세요.",
-                        actionTitle: "사진 라이브러리 열기",
+                        title: "Media Library",
+                        description: "Please grant access to your photo library.",
+                        actionTitle: "Open Photo Library",
                         action: {
                             // TODO: Request PHPhotoLibrary access
                         }
@@ -60,6 +60,7 @@ struct MediaHubView: View {
             }
         }
         .navigationTitle("rawcut")
+        .navigationBarTitleDisplayMode(.large)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -69,7 +70,7 @@ struct MediaHubView: View {
                     Image(systemName: "magnifyingglass")
                         .foregroundStyle(Color.rcTextPrimary)
                 }
-                .accessibilityLabel("검색")
+                .accessibilityLabel("Search")
             }
         }
     }
@@ -87,19 +88,19 @@ struct MediaHubView: View {
                     if uploadingCount > 0 {
                         Image(systemName: "arrow.up.circle.fill")
                             .foregroundStyle(Color.rcWarning)
-                        Text("업로드 중 \(uploadingCount)개")
+                        Text("\(uploadingCount) uploading")
                             .font(.rcCaption)
                             .foregroundStyle(Color.rcTextSecondary)
                     }
                     if failedCount > 0 {
                         Image(systemName: "exclamationmark.circle.fill")
                             .foregroundStyle(Color.rcError)
-                        Text("실패 \(failedCount)개")
+                        Text("\(failedCount) failed")
                             .font(.rcCaption)
                             .foregroundStyle(Color.rcTextSecondary)
                     }
                     Spacer()
-                    Text("\(syncedCount)개 동기화 완료")
+                    Text("\(syncedCount) synced")
                         .font(.rcCaption)
                         .foregroundStyle(Color.rcTextTertiary)
                 }

@@ -39,14 +39,14 @@ final class AppDelegate: NSObject, UIApplicationDelegate, @unchecked Sendable {
     // MARK: - Push Notifications
 
     private func requestNotificationPermissions() {
-        let center = UNUserNotificationCenter.current()
-        center.requestAuthorization(options: [.alert, .badge, .sound]) { granted, error in
-            if granted {
-                DispatchQueue.main.async {
+        Task { @MainActor in
+            let center = UNUserNotificationCenter.current()
+            do {
+                let granted = try await center.requestAuthorization(options: [.alert, .badge, .sound])
+                if granted {
                     UIApplication.shared.registerForRemoteNotifications()
                 }
-            }
-            if let error {
+            } catch {
                 print("[Rawcut] Notification auth error: \(error.localizedDescription)")
             }
         }

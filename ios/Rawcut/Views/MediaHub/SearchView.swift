@@ -44,7 +44,7 @@ struct SearchView: View {
                 }
             }
         }
-        .navigationTitle("검색")
+        .navigationTitle("Search")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .onChange(of: searchText) { _, newValue in
@@ -59,12 +59,12 @@ struct SearchView: View {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(Color.rcTextTertiary)
 
-            TextField("영상 검색 — '화이트보드 회의' 또는 '야외 산책'", text: $searchText)
+            TextField("Search your footage — 'whiteboard meeting' or 'outdoor walk'", text: $searchText)
                 .font(.rcBody)
                 .foregroundStyle(Color.rcTextPrimary)
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
-                .accessibilityLabel("검색어 입력")
+                .accessibilityLabel("Enter search query")
 
             if !searchText.isEmpty {
                 Button {
@@ -75,7 +75,7 @@ struct SearchView: View {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(Color.rcTextTertiary)
                 }
-                .accessibilityLabel("검색어 지우기")
+                .accessibilityLabel("Clear search")
             }
         }
         .padding(.horizontal, Spacing.md)
@@ -91,8 +91,8 @@ struct SearchView: View {
             .overlay {
                 EmptyStateView(
                     icon: "magnifyingglass",
-                    title: "영상을 검색하세요",
-                    description: "'화이트보드 회의' 또는 '야외 산책'을 입력해 보세요"
+                    title: "Search your footage",
+                    description: "Try 'whiteboard meeting' or 'outdoor walk'"
                 )
             }
     }
@@ -103,7 +103,7 @@ struct SearchView: View {
             .overlay {
                 ProgressView()
                     .tint(Color.rcAccent)
-                    .accessibilityLabel("검색 중")
+                    .accessibilityLabel("Searching")
             }
     }
 
@@ -113,8 +113,8 @@ struct SearchView: View {
             .overlay {
                 EmptyStateView(
                     icon: "magnifyingglass",
-                    title: "'\(debouncedQuery)'에 대한 결과 없음",
-                    description: "다른 키워드를 입력해 보세요."
+                    title: "No results found",
+                    description: "Try different keywords."
                 )
             }
     }

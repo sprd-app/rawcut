@@ -28,7 +28,7 @@ struct AssetThumbnailView: View {
                     .padding(.vertical, 2)
                     .background(Color.black.opacity(0.6), in: Capsule())
                     .padding(Spacing.sm)
-                    .accessibilityLabel("태그: \(firstTag)")
+                    .accessibilityLabel("Tag: \(firstTag)")
             }
 
             // Bottom-right overlays
@@ -88,7 +88,7 @@ struct AssetThumbnailView: View {
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(Color.black.opacity(0.6), in: Capsule())
-            .accessibilityLabel("길이 \(formattedDuration)")
+            .accessibilityLabel("Duration \(formattedDuration)")
     }
 
     @ViewBuilder
@@ -96,7 +96,7 @@ struct AssetThumbnailView: View {
         switch asset.syncStatus {
         case .synced:
             syncIcon(systemName: "checkmark", color: .green)
-                .accessibilityLabel("동기화 완료")
+                .accessibilityLabel("synced")
 
         case .uploading:
             syncIcon(systemName: "arrow.up", color: .blue)
@@ -105,11 +105,11 @@ struct AssetThumbnailView: View {
                     .easeInOut(duration: 1.0).repeatForever(autoreverses: true),
                     value: isPulsing
                 )
-                .accessibilityLabel("업로드 중")
+                .accessibilityLabel("uploading")
 
         case .pending:
             syncIcon(systemName: "clock", color: Color.rcTextTertiary)
-                .accessibilityLabel("대기 중")
+                .accessibilityLabel("pending")
 
         case .failed:
             Button {
@@ -117,8 +117,8 @@ struct AssetThumbnailView: View {
             } label: {
                 syncIcon(systemName: "xmark", color: Color.rcError)
             }
-            .accessibilityLabel("업로드 실패, 탭하여 재시도")
-            .accessibilityHint("다시 업로드합니다")
+            .accessibilityLabel("Upload failed, tap to retry")
+            .accessibilityHint("Retries upload")
         }
     }
 
@@ -168,13 +168,13 @@ struct AssetThumbnailView: View {
     }
 
     private var thumbnailAccessibilityLabel: String {
-        let type = asset.mediaType == .video ? "동영상" : "사진"
+        let type = asset.mediaType == .video ? "video" : "photo"
         let status: String
         switch asset.syncStatus {
-        case .synced: status = "동기화 완료"
-        case .uploading: status = "업로드 중"
-        case .pending: status = "대기 중"
-        case .failed: status = "업로드 실패"
+        case .synced: status = "synced"
+        case .uploading: status = "uploading"
+        case .pending: status = "pending"
+        case .failed: status = "upload failed"
         }
         return "\(type), \(status)"
     }
@@ -189,7 +189,7 @@ struct AssetThumbnailView: View {
                 syncStatus: .synced,
                 fileSize: 5_000_000,
                 mediaType: .video,
-                tags: ["화이트보드"]
+                tags: ["whiteboard"]
             ))
             AssetThumbnailView(asset: MediaAsset(
                 localIdentifier: "preview-2",
@@ -202,7 +202,7 @@ struct AssetThumbnailView: View {
                 syncStatus: .failed,
                 fileSize: 1_000_000,
                 mediaType: .video,
-                tags: ["야외"]
+                tags: ["outdoor"]
             ))
         }
     }

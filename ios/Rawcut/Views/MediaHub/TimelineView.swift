@@ -11,8 +11,8 @@ struct TimelineView: View {
         if assets.isEmpty {
             EmptyStateView(
                 icon: "clock.arrow.circlepath",
-                title: "동기화된 미디어 없음",
-                description: "라이브러리 탭을 열어 동기화를 시작하세요.",
+                title: "No synced media yet",
+                description: "Open the Library tab to start syncing.",
                 actionTitle: nil,
                 action: nil
             )
@@ -56,13 +56,13 @@ private struct DateGroup: Identifiable {
 
     var headerText: String {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ko_KR")
-        formatter.dateFormat = "M월 d일"
+        formatter.locale = Locale(identifier: "en_US")
+        formatter.dateFormat = "MMM d"
         let dateStr = formatter.string(from: date)
 
         var parts: [String] = []
-        if videoCount > 0 { parts.append("동영상 \(videoCount)개") }
-        if photoCount > 0 { parts.append("사진 \(photoCount)개") }
+        if videoCount > 0 { parts.append("\(videoCount) videos") }
+        if photoCount > 0 { parts.append("\(photoCount) photos") }
         return "\(dateStr) — \(parts.joined(separator: ", "))"
     }
 }

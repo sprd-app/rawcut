@@ -33,12 +33,12 @@ struct OnboardingView: View {
                 .foregroundStyle(Color.rcAccent)
                 .accessibilityHidden(true)
 
-            Text("당신의 영상, 당신의 이야기")
-                .font(.rcTitleLarge)
+            Text("Your footage, your story")
+                .font(.rcDisplay)
                 .foregroundStyle(Color.rcTextPrimary)
                 .multilineTextAlignment(.center)
 
-            Text("rawcut이 촬영한 모든 영상을 안전하게 보관하고\n시네마틱 브이로그로 만들어 드립니다.")
+            Text("rawcut keeps all your footage safe\nand turns it into cinematic vlogs.")
                 .font(.rcBody)
                 .foregroundStyle(Color.rcTextSecondary)
                 .multilineTextAlignment(.center)
@@ -46,7 +46,7 @@ struct OnboardingView: View {
 
             Spacer()
 
-            nextButton(label: "다음") {
+            nextButton(label: "Next") {
                 withAnimation { currentPage = 1 }
             }
         }
@@ -64,12 +64,12 @@ struct OnboardingView: View {
                 .foregroundStyle(Color.rcAccent)
                 .accessibilityHidden(true)
 
-            Text("모든 영상을 동기화합니다")
-                .font(.rcTitleLarge)
+            Text("We sync everything")
+                .font(.rcDisplay)
                 .foregroundStyle(Color.rcTextPrimary)
                 .multilineTextAlignment(.center)
 
-            Text("사진 라이브러리에 접근하여\n영상과 사진을 안전하게 클라우드에 백업합니다.")
+            Text("rawcut automatically syncs all your photos\nand videos to the cloud.")
                 .font(.rcBody)
                 .foregroundStyle(Color.rcTextSecondary)
                 .multilineTextAlignment(.center)
@@ -81,7 +81,7 @@ struct OnboardingView: View {
                 Button {
                     requestPhotoAccess()
                 } label: {
-                    Text("사진 접근 허용")
+                    Text("Grant Photo Access")
                         .font(.rcBody)
                         .fontWeight(.semibold)
                         .foregroundStyle(.black)
@@ -89,12 +89,12 @@ struct OnboardingView: View {
                         .padding(.vertical, Spacing.md)
                         .background(Color.rcAccent, in: Capsule())
                 }
-                .accessibilityLabel("사진 라이브러리 접근 허용")
+                .accessibilityLabel("Grant Photo Access")
 
                 Button {
                     withAnimation { currentPage = 2 }
                 } label: {
-                    Text("나중에")
+                    Text("Later")
                         .font(.rcBody)
                         .foregroundStyle(Color.rcTextSecondary)
                 }
@@ -115,12 +115,12 @@ struct OnboardingView: View {
                 .foregroundStyle(Color.rcAccent)
                 .accessibilityHidden(true)
 
-            Text("15분 만에 시네마틱 브이로그")
-                .font(.rcTitleLarge)
+            Text("Cinematic vlogs in 15 minutes")
+                .font(.rcDisplay)
                 .foregroundStyle(Color.rcTextPrimary)
                 .multilineTextAlignment(.center)
 
-            Text("영상을 선택하고 스크립트를 작성하면\nrawcut이 나머지를 처리합니다.")
+            Text("rawcut's AI turns your footage\ninto cinematic vlogs.")
                 .font(.rcBody)
                 .foregroundStyle(Color.rcTextSecondary)
                 .multilineTextAlignment(.center)
@@ -131,7 +131,7 @@ struct OnboardingView: View {
             Button {
                 completeOnboarding()
             } label: {
-                Text("시작하기")
+                Text("Get Started")
                     .font(.rcBody)
                     .fontWeight(.semibold)
                     .foregroundStyle(.black)
@@ -140,7 +140,7 @@ struct OnboardingView: View {
                     .background(Color.rcAccent, in: Capsule())
             }
             .padding(.horizontal, Spacing.xxl)
-            .accessibilityLabel("시작하기")
+            .accessibilityLabel("Get Started")
         }
         .padding(.bottom, Spacing.xxl)
     }

@@ -18,7 +18,7 @@ struct ContentView: View {
                 MediaHubView()
             }
             .tabItem {
-                Label("라이브러리", systemImage: "photo.on.rectangle.angled")
+                Label("Library", systemImage: "photo.on.rectangle.angled")
             }
             .tag(Tab.library)
 
@@ -26,7 +26,7 @@ struct ContentView: View {
                 CreatePlaceholderView()
             }
             .tabItem {
-                Label("만들기", systemImage: "plus.circle.fill")
+                Label("Create", systemImage: "plus.circle.fill")
             }
             .tag(Tab.create)
 
@@ -34,7 +34,7 @@ struct ContentView: View {
                 ProjectsPlaceholderView()
             }
             .tabItem {
-                Label("프로젝트", systemImage: "film.stack")
+                Label("Projects", systemImage: "film.stack")
             }
             .tag(Tab.projects)
 
@@ -42,7 +42,7 @@ struct ContentView: View {
                 SettingsView()
             }
             .tabItem {
-                Label("설정", systemImage: "gearshape")
+                Label("Settings", systemImage: "gearshape")
             }
             .tag(Tab.settings)
         }
@@ -64,11 +64,11 @@ private struct CreatePlaceholderView: View {
             Color.rcBackground.ignoresSafeArea()
             EmptyStateView(
                 icon: "plus.circle",
-                title: "브이로그 만들기",
-                description: "영상을 선택하고 스크립트를 작성하면, rawcut이 나머지를 처리합니다."
+                title: "Create a Vlog",
+                description: "Select footage, write a script, and let rawcut handle the rest."
             )
         }
-        .navigationTitle("만들기")
+        .navigationTitle("Create")
     }
 }
 
@@ -78,11 +78,11 @@ private struct ProjectsPlaceholderView: View {
             Color.rcBackground.ignoresSafeArea()
             EmptyStateView(
                 icon: "film.stack",
-                title: "프로젝트가 없습니다",
-                description: "완성된 브이로그가 여기에 표시됩니다."
+                title: "No Projects Yet",
+                description: "Your finished vlogs will appear here."
             )
         }
-        .navigationTitle("프로젝트")
+        .navigationTitle("Projects")
     }
 }
 
@@ -111,11 +111,23 @@ extension Color {
 }
 
 extension Font {
-    static let rcTitleLarge = Font.system(size: 28, weight: .semibold, design: .default)
-    static let rcTitleMedium = Font.system(size: 20, weight: .semibold, design: .default)
+    // Display fonts — rounded design for hero moments, brand presence
+    static let rcDisplay = Font.system(size: 34, weight: .bold, design: .rounded)
+    static let rcDisplayMedium = Font.system(size: 28, weight: .bold, design: .rounded)
+
+    // Title fonts — rounded for section headers, gives character
+    static let rcTitleLarge = Font.system(size: 28, weight: .semibold, design: .rounded)
+    static let rcTitleMedium = Font.system(size: 20, weight: .semibold, design: .rounded)
+
+    // Body + UI fonts — default design, clean and readable
     static let rcBody = Font.system(size: 15, weight: .regular, design: .default)
+    static let rcBodyMedium = Font.system(size: 15, weight: .medium, design: .default)
     static let rcCaption = Font.system(size: 12, weight: .regular, design: .default)
+    static let rcCaptionBold = Font.system(size: 12, weight: .semibold, design: .default)
     static let rcTabBar = Font.system(size: 10, weight: .medium, design: .default)
+
+    // Accent font — monospaced rounded for numbers, stats, cost display
+    static let rcStat = Font.system(size: 24, weight: .bold, design: .rounded)
 }
 
 #Preview {
