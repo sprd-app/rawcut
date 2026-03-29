@@ -1,0 +1,106 @@
+#cloud-config
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - tmux
+  - git
+  - curl
+  - unzip
+  - build-essential
+  - jq
+  - ffmpeg
+  - python3.12
+  - python3.12-venv
+  - python3.12-dev
+
+runcmd:
+  # --- Node.js 20 ---
+  - curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+  - apt-get install -y nodejs
+
+  # --- Bun (required for Claude Code Channels) ---
+  - su - jinho -c "curl -fsSL https://bun.sh/install | bash"
+
+  # --- uv (Python package manager) ---
+  - curl -LsSf https://astral.sh/uv/install.sh | su - jinho -c "sh"
+
+  # --- pnpm ---
+  - npm install -g pnpm
+
+  # --- Claude Code ---
+  - npm install -g @anthropic-ai/claude-code
+
+  # --- Docker ---
+  - curl -fsSL https://get.docker.com | sh
+  - usermod -aG docker jinho
+
+  # --- Tailscale ---
+  - curl -fsSL https://tailscale.com/install.sh | sh
+
+  # --- Git config ---
+  - su - jinho -c "git config --global user.name 'jinho'"
+  - su - jinho -c "git config --global user.email 'jinho@rawcut.app'"
+
+  # --- Clone rawcut repo ---
+  - su - jinho -c "mkdir -p ~/projects && cd ~/projects && git clone https://github.com/jinho/rawcut.git rawcut" || true
+
+  # --- tmux config ---
+  - |
+    cat > /home/jinho/.tmux.conf << 'EOF'
+    set -g mouse on
+    set -g history-limit 50000
+    set -g default-terminal "screen-256color"
+    set -s escape-time 0
+    EOF
+    chown jinho:jinho /home/jinho/.tmux.conf
+
+  # --- systemd service: auto-start tmux session on boot ---
+  - |
+    cat > /etc/systemd/system/claude-devbox.service << 'EOF'
+    [Unit]
+    Description=Claude Code tmux session
+    After=network-online.target
+    Wants=network-online.target
+
+    [Service]
+    Type=forking
+    User=jinho
+    ExecStart=/usr/bin/tmux new-session -d -s rawcut -c /home/jinho/projects/rawcut
+    ExecStop=/usr/bin/tmux kill-session -t rawcut
+    Restart=on-failure
+    RestartSec=5
+
+    [Install]
+    WantedBy=multi-user.target
+    EOF
+    systemctl daemon-reload
+    systemctl enable claude-devbox.service
+    systemctl start claude-devbox.service
+
+  # --- Claude Code Channel setup hint ---
+  - |
+    cat > /home/jinho/DEVBOX-README.md << 'EOF'
+    # rawcut devbox
+
+    ## Connect via SSH
+    ssh jinho@<PUBLIC_IP>
+
+    ## Start Claude Code
+    cd ~/projects/rawcut
+    claude
+
+    ## Claude Code Channel (Telegram)
+    claude --channel telegram
+
+    ## Tailscale (optional, for private network)
+    sudo tailscale up
+
+    ## Backend dev server
+    cd ~/projects/rawcut/backend
+    python3.12 -m venv .venv && source .venv/bin/activate
+    pip install -r requirements.txt
+    uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+    EOF
+    chown jinho:jinho /home/jinho/DEVBOX-README.md
