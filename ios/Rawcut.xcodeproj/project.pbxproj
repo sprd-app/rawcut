@@ -27,6 +27,8 @@
 		E72C373C931067F9BE34D818 /* SyncStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE5C805CF93AFF5006ECFCEF /* SyncStatus.swift */; };
 		EB1C6E98CDDCBF70B45AC61E /* LocalStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 831BDED24E5F40D8C4917ABC /* LocalStore.swift */; };
 		F4153450F284A4ED6ECDB6D6 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2EB4C006454AA1DBB1FB872 /* SettingsView.swift */; };
+		BB22CC33DD44EE55FF66AA11 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF66 /* Assets.xcassets */; };
+		FF66AA11BB22CC33DD44EE55 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = EE55FF66AA11BB22CC33DD44 /* Localizable.xcstrings */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -64,6 +66,8 @@
 		DB7173877C37667943D6F1CD /* SearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchView.swift; sourceTree = "<group>"; };
 		DFB755185356E81E51B6FABE /* RawcutTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = RawcutTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		EE5C805CF93AFF5006ECFCEF /* SyncStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncStatus.swift; sourceTree = "<group>"; };
+		AA11BB22CC33DD44EE55FF66 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		EE55FF66AA11BB22CC33DD44 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -181,6 +185,7 @@
 				47510F26754ADDBF7ED78618 /* Persistence */,
 				D37612572C50541ECC39680B /* Services */,
 				B7C4E10AA7C6FC44F6E62965 /* Views */,
+				DD44EE55FF66AA11BB22CC33 /* Resources */,
 			);
 			path = Rawcut;
 			sourceTree = "<group>";
@@ -193,6 +198,15 @@
 			path = Onboarding;
 			sourceTree = "<group>";
 		};
+		DD44EE55FF66AA11BB22CC33 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				AA11BB22CC33DD44EE55FF66 /* Assets.xcassets */,
+				EE55FF66AA11BB22CC33DD44 /* Localizable.xcstrings */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -200,6 +214,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = AEA98BA757654A22E9C2C656 /* Build configuration list for PBXNativeTarget "Rawcut" */;
 			buildPhases = (
+				CC33DD44EE55FF66AA11BB22 /* Resources */,
 				8E6F9916AAC13A1FDACB0FFE /* Sources */,
 			);
 			buildRules = (
@@ -269,6 +284,17 @@
 		};
 /* End PBXProject section */
 
+/* Begin PBXResourcesBuildPhase section */
+		CC33DD44EE55FF66AA11BB22 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BB22CC33DD44EE55FF66AA11 /* Assets.xcassets in Resources */,
+				FF66AA11BB22CC33DD44EE55 /* Localizable.xcstrings in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 /* Begin PBXSourcesBuildPhase section */
 		38E10010080CE3AD671194E8 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
