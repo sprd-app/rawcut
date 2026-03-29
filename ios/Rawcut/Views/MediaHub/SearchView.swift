@@ -184,7 +184,7 @@ struct SearchView: View {
 
     private func fetchFromBackend(query: String) async throws -> [MediaAsset] {
         guard let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-              let url = URL(string: "http://localhost:8080/api/search?q=\(encoded)") else {
+              let url = URL(string: "https://rawcut-api.wittygrass-ccc95e2e.koreacentral.azurecontainerapps.io/api/search?q=\(encoded)") else {
             throw URLError(.badURL)
         }
 
