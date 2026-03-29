@@ -44,3 +44,21 @@ openai.json
 .gstack/
 __pycache__/
 prototypes/
+
+# Secrets
+.env
+.env.local
+.env.production
+*.pem
+*.p12
+*.key
+~/.gstack/openai.json
+
+# Xcode user data
+*.xcuserdata/
+xcuserdata/
+
+# Terraform state (if any)
+*.tfstate
+*.tfstate.*
+.terraform/
