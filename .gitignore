@@ -18,6 +18,10 @@ Packages/
 __pycache__/
 *.py[cod]
 *$py.class
+
+# SQLite (local dev DB)
+*.db
+!backend/luts/.gitkeep
 *.so
 .venv/
 venv/
