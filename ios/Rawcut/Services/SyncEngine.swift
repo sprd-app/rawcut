@@ -187,7 +187,15 @@ final class SyncEngine: ObservableObject {
             if Task.isCancelled || isPaused { return }
 
             do {
-                let result = try await uploadManager.uploadAsset(asset, fileURL: fileURL)
+                // Create a sendable snapshot for the upload
+                let assetSnapshot = MediaAsset(
+                    localIdentifier: asset.localIdentifier,
+                    syncStatus: asset.syncStatus,
+                    fileSize: asset.fileSize,
+                    mediaType: asset.mediaType,
+                    createdDate: asset.createdDate
+                )
+                let result = try await uploadManager.uploadAsset(assetSnapshot, fileURL: fileURL)
 
                 // Mark as synced
                 if let dbAsset = fetchAsset(identifier: identifier, in: context) {

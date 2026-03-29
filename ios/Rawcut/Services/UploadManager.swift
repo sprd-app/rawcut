@@ -60,29 +60,28 @@ final class UploadManager: NSObject, Sendable {
 
         let tempSession = URLSession(configuration: config)
         self.session = tempSession
+        self.backgroundSession = tempSession
 
         super.init()
 
         // Re-create session with delegate now that self is initialized
-        let delegateSession = URLSession(
-            configuration: config,
-            delegate: self,
-            delegateQueue: nil
-        )
-        // Use the delegate session going forward
-        // Note: We store it but use the pattern below for uploads
-        _ = delegateSession
+        let delegateConfig = URLSessionConfiguration.background(withIdentifier: Self.sessionIdentifier)
+        delegateConfig.isDiscretionary = false
+        delegateConfig.sessionSendsLaunchEvents = true
+        delegateConfig.allowsCellularAccess = true
     }
 
-    // MARK: - Lazy Session (with delegate)
+    // MARK: - Session (nonisolated for Sendable)
 
-    private lazy var backgroundSession: URLSession = {
-        let config = URLSessionConfiguration.background(withIdentifier: Self.sessionIdentifier)
+    private let backgroundSession: URLSession
+
+    private static func createBackgroundSession(delegate: UploadManager) -> URLSession {
+        let config = URLSessionConfiguration.background(withIdentifier: sessionIdentifier)
         config.isDiscretionary = false
         config.sessionSendsLaunchEvents = true
         config.allowsCellularAccess = true
-        return URLSession(configuration: config, delegate: self, delegateQueue: nil)
-    }()
+        return URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
+    }
 
     // MARK: - Upload
 
@@ -108,19 +107,21 @@ final class UploadManager: NSObject, Sendable {
         let uploadState = UploadState(assetIdentifier: asset.localIdentifier)
         await activeUploads.set(asset.localIdentifier, state: uploadState)
 
-        return try await withCheckedThrowingContinuation { continuation in
-            let task = backgroundSession.uploadTask(with: request, fromFile: fileURL)
-            task.taskDescription = asset.localIdentifier
+        let localId = asset.localIdentifier
+        let fileSize = asset.fileSize
+        let uploads = activeUploads
+        let session = backgroundSession
 
-            Task {
-                await activeUploads.setContinuation(
-                    asset.localIdentifier,
-                    continuation: continuation
-                )
+        return try await withCheckedThrowingContinuation { continuation in
+            let task = session.uploadTask(with: request, fromFile: fileURL)
+            task.taskDescription = localId
+
+            Task { @Sendable in
+                await uploads.setContinuation(localId, continuation: continuation)
             }
 
             task.resume()
-            print("[Rawcut] Upload started: \(asset.localIdentifier) (\(asset.fileSize) bytes)")
+            print("[Rawcut] Upload started: \(localId) (\(fileSize) bytes)")
         }
     }
 
