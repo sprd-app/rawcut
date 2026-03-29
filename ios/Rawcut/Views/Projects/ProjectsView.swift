@@ -171,7 +171,10 @@ struct ProjectsView: View {
     }
 
     private func createAutoVideo() async {
-        guard let token = authManager.authToken else { return }
+        guard let token = authManager.authToken else {
+            autoVideoError = "Sign in required"
+            return
+        }
         isAutoVideoLoading = true
         autoVideoError = nil
 
