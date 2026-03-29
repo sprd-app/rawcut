@@ -17,14 +17,6 @@ struct ProjectsView: View {
             if isLoading && projects.isEmpty {
                 ProgressView()
                     .tint(Color.rcAccent)
-            } else if projects.isEmpty {
-                EmptyStateView(
-                    icon: "film.stack",
-                    title: "No Projects Yet",
-                    description: "Select footage and create your first vlog.",
-                    actionTitle: "New Project",
-                    action: { showingCreate = true }
-                )
             } else {
                 projectsList
             }
@@ -69,12 +61,12 @@ struct ProjectsView: View {
                     .foregroundStyle(Color.rcAccent)
 
                 VStack(alignment: .leading, spacing: Spacing.xs) {
-                    Text("오늘의 영상 만들기")
+                    Text("Make Today's Video")
                         .font(.rcBodyMedium)
                         .foregroundStyle(Color.rcTextPrimary)
 
                     if isAutoVideoLoading {
-                        Text("준비 중...")
+                        Text("Preparing...")
                             .font(.rcCaption)
                             .foregroundStyle(Color.rcTextSecondary)
                     } else if let error = autoVideoError {
@@ -83,7 +75,7 @@ struct ProjectsView: View {
                             .foregroundStyle(Color.rcTextSecondary)
                             .lineLimit(1)
                     } else {
-                        Text("원탭으로 시네마틱 영상을 만들어보세요")
+                        Text("One tap to create a cinematic video")
                             .font(.rcCaption)
                             .foregroundStyle(Color.rcTextSecondary)
                     }
@@ -107,8 +99,8 @@ struct ProjectsView: View {
             )
         }
         .disabled(isAutoVideoLoading)
-        .accessibilityLabel("오늘의 영상 만들기")
-        .accessibilityHint("원탭으로 시네마틱 영상을 자동으로 만듭니다")
+        .accessibilityLabel("Make Today's Video")
+        .accessibilityHint("One tap to automatically create a cinematic video")
         .listRowBackground(Color.clear)
         .listRowInsets(EdgeInsets(top: Spacing.sm, leading: Spacing.lg, bottom: Spacing.sm, trailing: Spacing.lg))
         .listRowSeparator(.hidden)
@@ -117,6 +109,21 @@ struct ProjectsView: View {
     private var projectsList: some View {
         List {
             heroCard
+
+            if projects.isEmpty {
+                VStack(spacing: Spacing.md) {
+                    Text("No projects yet")
+                        .font(.rcBodyMedium)
+                        .foregroundStyle(Color.rcTextSecondary)
+                    Text("Tap the button above to create a video")
+                        .font(.rcCaption)
+                        .foregroundStyle(Color.rcTextTertiary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, Spacing.xxl)
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            }
 
             ForEach(projects) { project in
                 NavigationLink(value: project) {
@@ -209,7 +216,7 @@ struct ProjectsView: View {
                 await loadProjects()
             }
         } catch {
-            autoVideoError = "영상 만들기에 실패했습니다"
+            autoVideoError = "Failed to create video"
             print("[Rawcut] Auto-video failed: \(error)")
         }
 

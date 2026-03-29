@@ -81,10 +81,9 @@ async def init_db() -> None:
 
     Also runs lightweight migrations for columns added after initial schema.
     """
-    async with aiosqlite.connect(settings.sqlite_path, timeout=30) as db:
-        # WAL mode + busy timeout for Azure File Share concurrent access
-        await db.execute("PRAGMA journal_mode=WAL")
-        await db.execute("PRAGMA busy_timeout=15000")
+    async with aiosqlite.connect(settings.sqlite_path, timeout=10) as db:
+        await db.execute("PRAGMA journal_mode=DELETE")
+        await db.execute("PRAGMA busy_timeout=5000")
         for statement in _SCHEMA.split(";"):
             stmt = statement.strip()
             if stmt:
