@@ -221,5 +221,6 @@ struct SearchView: View {
     NavigationStack {
         SearchView()
     }
+    .environmentObject(AuthManager())
     .modelContainer(for: MediaAsset.self, inMemory: true)
 }
