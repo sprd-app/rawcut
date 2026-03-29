@@ -46,6 +46,35 @@ def _media_type_from_content_type(content_type: str) -> str:
     return "image"
 
 
+async def _populate_duration_background(asset_id: str, blob_name: str) -> None:
+    """Extract video duration via ffprobe and store in DB."""
+    try:
+        import json as _json
+        import subprocess as _sp
+
+        blob_url = await get_blob_url(blob_name)
+        proc = await asyncio.create_subprocess_exec(
+            "ffprobe", "-v", "quiet",
+            "-print_format", "json",
+            "-show_format", blob_url,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=_sp.DEVNULL,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=30.0)
+        data = _json.loads(stdout.decode())
+        duration = float(data["format"]["duration"])
+
+        async with aiosqlite.connect(settings.sqlite_path) as db:
+            await db.execute(
+                "UPDATE media_assets SET duration = ? WHERE id = ?",
+                (duration, asset_id),
+            )
+            await db.commit()
+        logger.info("Duration for asset %s: %.1fs", asset_id, duration)
+    except Exception:
+        logger.exception("Failed to get duration for asset %s", asset_id)
+
+
 async def _tag_asset_background(asset_id: str, blob_name: str) -> None:
     """Run auto-tagger for a single asset and persist the results."""
     try:
@@ -149,7 +178,9 @@ async def stream_upload(
     except Exception:
         logger.exception("Failed to register asset %s in DB", asset_id)
 
-    # Trigger auto-tagging in background
+    # Trigger auto-tagging and duration extraction in background
     background_tasks.add_task(_tag_asset_background, asset_id, blob_name)
+    if media_type == "video":
+        background_tasks.add_task(_populate_duration_background, asset_id, blob_name)
 
     return {**result, "asset_id": asset_id}

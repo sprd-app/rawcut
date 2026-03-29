@@ -21,6 +21,27 @@
 **Context:** The gstack designer (`$D`) is installed but requires a verified OpenAI org. Once verified, mockups take ~40s each to generate. The /office-hours wireframe at /tmp/gstack-sketch-rawcut.html serves as a rough starting point.
 **Depends on:** OpenAI org verification at https://platform.openai.com/settings/organization/general
 
+## Extract Shared DB Helpers
+**Priority:** P2
+**What:** Extract `_verify_project_ownership` and `_row_to_dict` from `projects.py` and `renders.py` into `app/helpers/db.py`. Both functions are duplicated identically; `auto_video_service.py` will need them too, making it a 3x duplication.
+**Why:** DRY violation flagged in CEO review. Adding auto-video makes the duplication worse.
+**Effort:** S (human: ~30 min / CC: ~5 min)
+**Depends on:** Nothing
+
+## Render Job Recovery on Container Restart
+**Priority:** P2
+**What:** Add a startup check in `init_db()`: any render with `status='processing'` and `created_at` older than 10 minutes should be marked `status='failed'` with `error='Container restarted during render.'`
+**Why:** If Azure Container Apps recycles the container mid-render, the render job stays in 'processing' forever with no recovery. Auto-video increases render frequency, making this more likely. Flagged by outside voice in CEO review.
+**Effort:** S (human: ~1 hour / CC: ~10 min)
+**Depends on:** Nothing
+
+## Calibrate Render Time Estimates
+**Priority:** P3 (after first 10 renders)
+**What:** Log actual render times (start/end) and compare against the formula `30 + (15 * clip_count) + (total_duration * 0.3)`. Adjust constants based on real data from 10+ renders.
+**Why:** The estimate formula is uncalibrated. Wildly wrong estimates create worse UX than no estimate. Need real data to tune.
+**Effort:** S (human: ~30 min / CC: ~5 min)
+**Depends on:** Auto-video shipped + real usage data
+
 ## App Store Positioning: Media Cloud, Not Video Editor
 **Priority:** P2 — before TestFlight public launch
 **What:** Define App Store listing (title, subtitle, keywords, screenshots, description) that positions rawcut as a personal media cloud for creators, not a video editor.
