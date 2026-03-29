@@ -108,3 +108,42 @@ async def auto_video(
     )
 
     return result
+
+
+# DEV ONLY: manually set tags on assets (for testing)
+@router.post("/dev/tag-assets", include_in_schema=False)
+async def dev_tag_assets(request: Request) -> dict:
+    """Set tags on all untagged video assets. DEV/TEST only."""
+    import aiosqlite
+    from datetime import datetime, UTC
+    from app.config import settings
+
+    user_id: str = getattr(request.state, "user_id", "anonymous")
+    body = await request.json()
+    tags_list = body.get("tags", [
+        {"content_type": "talking_head", "quality_score": 0.9, "energy_level": 0.4, "emotion": "focused"},
+        {"content_type": "outdoor_walk", "quality_score": 0.8, "energy_level": 0.7, "emotion": "calm"},
+        {"content_type": "product_demo", "quality_score": 0.7, "energy_level": 0.5, "emotion": "excited"},
+        {"content_type": "screen_recording", "quality_score": 0.6, "energy_level": 0.3, "emotion": "neutral"},
+    ])
+
+    now = datetime.now(UTC).isoformat()
+    tagged = 0
+    async with aiosqlite.connect(settings.sqlite_path) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT id FROM media_assets WHERE user_id = ? AND tagged_at IS NULL AND media_type = 'video' ORDER BY created_at",
+            (user_id,),
+        )
+        rows = [dict(r) for r in await cursor.fetchall()]
+
+        for i, row in enumerate(rows):
+            tag = tags_list[i % len(tags_list)]
+            await db.execute(
+                "UPDATE media_assets SET content_type=?, quality_score=?, energy_level=?, emotion=?, tagged_at=? WHERE id=?",
+                (tag["content_type"], tag["quality_score"], tag["energy_level"], tag["emotion"], now, row["id"]),
+            )
+            tagged += 1
+        await db.commit()
+
+    return {"tagged": tagged, "user_id": user_id}
