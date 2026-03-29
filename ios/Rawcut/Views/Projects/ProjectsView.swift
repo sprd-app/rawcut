@@ -98,6 +98,7 @@ struct ProjectsView: View {
                     .fill(Color.rcSurface)
             )
         }
+        .buttonStyle(.plain)
         .disabled(isAutoVideoLoading)
         .accessibilityLabel("Make Today's Video")
         .accessibilityHint("One tap to automatically create a cinematic video")
@@ -171,7 +172,10 @@ struct ProjectsView: View {
     }
 
     private func createAutoVideo() async {
-        guard let token = authManager.authToken else { return }
+        guard let token = authManager.authToken else {
+            autoVideoError = "Sign in required"
+            return
+        }
         isAutoVideoLoading = true
         autoVideoError = nil
 

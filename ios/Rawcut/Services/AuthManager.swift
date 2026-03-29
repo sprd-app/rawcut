@@ -18,8 +18,80 @@ final class AuthManager: NSObject, ObservableObject {
 
     override init() {
         super.init()
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] != nil {
+            // Auto-authenticate in simulator with dev token
+            setupDevMode()
+            return
+        }
+        #endif
         restoreSession()
     }
+
+    #if DEBUG
+    private func setupDevMode() {
+        saveKeychainItem(key: Self.userIDKey, value: "dev-user-001")
+        saveKeychainItem(key: Self.nameKey, value: "Dev User")
+        saveKeychainItem(key: Self.serverTokenKey, value: "dev-simulator-token")
+        userIdentifier = "dev-user-001"
+        displayName = "Dev User"
+        isAuthenticated = true
+        print("[Rawcut] DEV MODE: Auto-authenticated as dev-user-001")
+
+        // Auto-test: trigger auto-video after delay
+        if CommandLine.arguments.contains("--auto-test") {
+            Task {
+                let token = self.authToken ?? "dev-simulator-token"
+                try? await Task.sleep(for: .seconds(3))
+
+                print("[Rawcut] AUTO-TEST: Calling auto-video API...")
+                let tz = TimeZone.current.secondsFromGMT()
+
+                // Call auto-video and handle 400 responses
+                guard let url = URL(string: "\(APIClient.baseURL)/api/auto-video") else { return }
+                var request = URLRequest(url: url)
+                request.httpMethod = "POST"
+                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+                struct Body: Encodable { let timezone_offset: Int; let preset: String; let aspect_ratio: String }
+                request.httpBody = try? JSONEncoder().encode(Body(timezone_offset: tz, preset: "warm_film", aspect_ratio: "2.0"))
+
+                do {
+                    let (data, response) = try await URLSession.shared.data(for: request)
+                    let http = response as? HTTPURLResponse
+                    let body = String(data: data, encoding: .utf8) ?? "(no body)"
+                    print("[Rawcut] AUTO-TEST: HTTP \(http?.statusCode ?? 0)")
+                    print("[Rawcut] AUTO-TEST: Response: \(body)")
+
+                    if http?.statusCode == 201 {
+                        let result = try JSONDecoder().decode(APIClient.AutoVideoResponse.self, from: data)
+                        print("[Rawcut] AUTO-TEST: SUCCESS! project=\(result.project_id) render=\(result.render_id) clips=\(result.clip_count)")
+
+                        // Poll render status
+                        for i in 1...30 {
+                            try? await Task.sleep(for: .seconds(5))
+                            let render = try await APIClient.getRenderStatus(renderId: result.render_id, authToken: token)
+                            print("[Rawcut] AUTO-TEST: Render poll #\(i): status=\(render.status) progress=\(Int(render.progress * 100))%")
+                            if render.isComplete {
+                                print("[Rawcut] AUTO-TEST: RENDER COMPLETE!")
+                                let dlURL = try await APIClient.getRenderDownloadURL(renderId: result.render_id, authToken: token)
+                                print("[Rawcut] AUTO-TEST: Download URL: \(dlURL.prefix(80))...")
+                                break
+                            }
+                            if render.isFailed {
+                                print("[Rawcut] AUTO-TEST: RENDER FAILED: \(render.error ?? "unknown")")
+                                break
+                            }
+                        }
+                    }
+                } catch {
+                    print("[Rawcut] AUTO-TEST: Error - \(error)")
+                }
+            }
+        }
+    }
+    #endif
 
     // MARK: - Auth Token
 
