@@ -82,7 +82,12 @@ async def init_db() -> None:
     Also runs lightweight migrations for columns added after initial schema.
     """
     async with aiosqlite.connect(settings.sqlite_path) as db:
-        await db.executescript(_SCHEMA)
+        # Use individual execute() instead of executescript() to avoid
+        # exclusive transaction locks on Azure File Share mounted SQLite.
+        for statement in _SCHEMA.split(";"):
+            stmt = statement.strip()
+            if stmt:
+                await db.execute(stmt)
         await db.commit()
 
         # Migrate existing DBs: add columns that may not exist yet.
