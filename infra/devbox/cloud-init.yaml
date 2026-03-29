@@ -67,7 +67,7 @@ runcmd:
     [Service]
     Type=forking
     User=jinho
-    ExecStart=/usr/bin/tmux new-session -d -s rawcut -c /home/jinho/projects/rawcut
+    ExecStart=/usr/bin/tmux new-session -d -s rawcut -c /home/jinho/projects/rawcut 'claude --dangerously-skip-permissions'
     ExecStop=/usr/bin/tmux kill-session -t rawcut
     Restart=on-failure
     RestartSec=5

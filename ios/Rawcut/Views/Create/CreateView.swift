@@ -216,6 +216,20 @@ struct CreateView: View {
                 description: description.trimmingCharacters(in: .whitespacesAndNewlines),
                 authToken: token
             )
+
+            // Associate selected clips with the project via blob_name
+            let blobNames = syncedAssets
+                .filter { selectedIDs.contains($0.localIdentifier) }
+                .compactMap { $0.cloudBlobName }
+
+            if !blobNames.isEmpty {
+                try await APIClient.setProjectClips(
+                    projectId: project.id,
+                    blobNames: blobNames,
+                    authToken: token
+                )
+            }
+
             onCreated(project)
         } catch {
             errorMessage = "Failed to create project. Please try again."
