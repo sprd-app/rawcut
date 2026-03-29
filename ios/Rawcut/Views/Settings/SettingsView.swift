@@ -5,6 +5,7 @@ import SwiftData
 /// sync status, and about section.
 struct SettingsView: View {
     @EnvironmentObject private var authManager: AuthManager
+    @EnvironmentObject private var syncEngine: SyncEngine
     @Query private var assets: [MediaAsset]
 
     @AppStorage("syncOnWiFiOnly") private var syncOnWiFiOnly = true
@@ -176,7 +177,7 @@ struct SettingsView: View {
                     .font(.rcBody)
                     .foregroundStyle(Color.rcTextPrimary)
                 Spacer()
-                Text("5 min ago")
+                Text(lastSyncedText)
                     .font(.rcCaption)
                     .foregroundStyle(Color.rcTextSecondary)
             }
@@ -233,6 +234,13 @@ struct SettingsView: View {
     }
 
     // MARK: - Computed Properties
+
+    private var lastSyncedText: String {
+        guard let date = syncEngine.lastSyncedDate else { return "Never" }
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .short
+        return formatter.localizedString(for: date, relativeTo: .now)
+    }
 
     private var totalSyncedBytes: Int64 {
         assets.filter { $0.syncStatus == .synced }.reduce(0) { $0 + $1.fileSize }

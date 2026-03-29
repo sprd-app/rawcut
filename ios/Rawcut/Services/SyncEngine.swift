@@ -33,6 +33,7 @@ final class SyncEngine: ObservableObject {
     @Published private(set) var syncProgress = SyncProgress()
     @Published private(set) var isSyncing: Bool = false
     @Published private(set) var syncStatusMessage: String = "Idle"
+    @Published private(set) var lastSyncedDate: Date?
 
     // MARK: - Dependencies
 
@@ -204,6 +205,7 @@ final class SyncEngine: ObservableObject {
                     try context.save()
                 }
                 syncProgress.totalBytesSynced += result.bytesUploaded
+                lastSyncedDate = .now
                 refreshProgress()
                 print("[Rawcut] Synced \(identifier)")
                 return

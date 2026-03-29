@@ -31,6 +31,9 @@ final class MediaAsset {
     /// User-assigned or AI-generated tags
     var tags: [String]?
 
+    /// Duration in seconds (0 for photos)
+    var durationSeconds: Double
+
     // MARK: - Computed accessors
 
     var syncStatus: SyncStatus {
@@ -50,7 +53,8 @@ final class MediaAsset {
         fileSize: Int64,
         mediaType: MediaType,
         createdDate: Date = .now,
-        tags: [String]? = nil
+        tags: [String]? = nil,
+        durationSeconds: Double = 0
     ) {
         self.localIdentifier = localIdentifier
         self.cloudBlobName = cloudBlobName
@@ -59,5 +63,6 @@ final class MediaAsset {
         self.mediaTypeRaw = mediaType.rawValue
         self.createdDate = createdDate
         self.tags = tags
+        self.durationSeconds = durationSeconds
     }
 }

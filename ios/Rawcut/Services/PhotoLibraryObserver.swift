@@ -177,7 +177,8 @@ final class PhotoLibraryObserver: NSObject, ObservableObject {
             syncStatus: .pending,
             fileSize: fileSize,
             mediaType: mediaType(for: phAsset),
-            createdDate: phAsset.creationDate ?? .now
+            createdDate: phAsset.creationDate ?? .now,
+            durationSeconds: phAsset.mediaType == .video ? phAsset.duration : 0
         )
         context.insert(asset)
         return true

@@ -159,9 +159,7 @@ struct AssetThumbnailView: View {
     // MARK: - Helpers
 
     private var formattedDuration: String {
-        // Estimate duration from file size for now; real duration comes from PHAsset
-        // This is a placeholder; real implementation would store duration in MediaAsset
-        let totalSeconds = Int(asset.fileSize / 500_000) // rough estimate
+        let totalSeconds = Int(asset.durationSeconds)
         let minutes = totalSeconds / 60
         let seconds = totalSeconds % 60
         return String(format: "%d:%02d", minutes, seconds)

@@ -23,7 +23,7 @@ struct ContentView: View {
             .tag(Tab.library)
 
             NavigationStack {
-                CreatePlaceholderView()
+                CreateView { _ in }
             }
             .tabItem {
                 Label("Create", systemImage: "plus.circle.fill")
@@ -31,7 +31,7 @@ struct ContentView: View {
             .tag(Tab.create)
 
             NavigationStack {
-                ProjectsPlaceholderView()
+                ProjectsView()
             }
             .tabItem {
                 Label("Projects", systemImage: "film.stack")
