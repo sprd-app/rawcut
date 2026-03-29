@@ -179,7 +179,7 @@ async def create_auto_video(
     local_now = now_utc + timedelta(seconds=timezone_offset)
     local_midnight = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
     utc_midnight = local_midnight - timedelta(seconds=timezone_offset)
-    utc_midnight_str = utc_midnight.strftime("%Y-%m-%dT%H:%M:%S")
+    utc_midnight_str = utc_midnight.strftime("%Y-%m-%d %H:%M:%S")
 
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
