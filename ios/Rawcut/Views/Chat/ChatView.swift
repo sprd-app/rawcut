@@ -361,9 +361,11 @@ struct ChatView: View {
                 clipsReq.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
                 clipsReq.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 clipsReq.httpBody = try JSONEncoder().encode(ClipBody(clips: clips))
-                let (_, clipsResp) = try await URLSession.shared.data(for: clipsReq)
-                guard let clipsHttp = clipsResp as? HTTPURLResponse, (200...299).contains(clipsHttp.statusCode) else {
-                    messages.append(ChatMessage(text: "Failed to set clips.", isUser: false))
+                let (clipsData, clipsResp) = try await URLSession.shared.data(for: clipsReq)
+                if let clipsHttp = clipsResp as? HTTPURLResponse, !(200...299).contains(clipsHttp.statusCode) {
+                    let errBody = String(data: clipsData, encoding: .utf8) ?? "unknown"
+                    print("[Rawcut] Set clips failed: HTTP \(clipsHttp.statusCode) \(errBody)")
+                    messages.append(ChatMessage(text: "Failed to set clips: \(errBody)", isUser: false))
                     isLoading = false
                     return
                 }

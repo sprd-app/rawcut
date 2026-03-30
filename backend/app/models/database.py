@@ -43,14 +43,14 @@ CREATE INDEX IF NOT EXISTS idx_media_assets_sync_status ON media_assets(user_id,
 CREATE INDEX IF NOT EXISTS idx_projects_user ON projects(user_id);
 
 CREATE TABLE IF NOT EXISTS project_clips (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
     project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     asset_id    TEXT NOT NULL REFERENCES media_assets(id),
     position    INTEGER NOT NULL DEFAULT 0,
     trim_start  REAL DEFAULT 0.0,
     trim_end    REAL DEFAULT NULL,
     role        TEXT DEFAULT 'auto'
-                CHECK(role IN ('a_roll', 'b_roll', 'auto')),
-    PRIMARY KEY (project_id, asset_id)
+                CHECK(role IN ('a_roll', 'b_roll', 'auto'))
 );
 
 CREATE TABLE IF NOT EXISTS renders (
