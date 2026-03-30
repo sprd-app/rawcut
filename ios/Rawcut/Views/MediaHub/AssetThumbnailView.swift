@@ -1,3 +1,4 @@
+import AVFoundation
 import Photos
 import SwiftUI
 
@@ -144,9 +145,10 @@ struct AssetThumbnailView: View {
 
         let size = CGSize(width: 300, height: 300)
         let options = PHImageRequestOptions()
-        options.deliveryMode = .opportunistic
+        options.deliveryMode = .fastFormat
         options.isNetworkAccessAllowed = true
         options.isSynchronous = false
+        options.resizeMode = .fast
 
         Self.imageManager.requestImage(
             for: phAsset,
@@ -157,10 +159,37 @@ struct AssetThumbnailView: View {
             Task { @MainActor in
                 if let image {
                     self.thumbnail = image
-                } else {
-                    let error = info?[PHImageErrorKey] as? Error
-                    print("[Rawcut] Thumbnail: requestImage returned nil for \(self.asset.localIdentifier.prefix(20)), error: \(error?.localizedDescription ?? "none")")
+                } else if self.thumbnail == nil {
+                    // Fallback: generate thumbnail from video asset
+                    if self.asset.mediaType == .video {
+                        self.loadVideoThumbnail(phAsset: phAsset)
+                    }
                 }
+            }
+        }
+    }
+
+    private func loadVideoThumbnail(phAsset: PHAsset) {
+        // Extract video URL, then generate thumbnail off-main
+        let options = PHVideoRequestOptions()
+        options.isNetworkAccessAllowed = true
+        options.version = .current
+
+        PHImageManager.default().requestAVAsset(forVideo: phAsset, options: options) { avAsset, _, info in
+            // Skip degraded/progress callbacks
+            if info?[PHImageResultIsDegradedKey] as? Bool == true { return }
+
+            guard let urlAsset = avAsset as? AVURLAsset else { return }
+            let videoURL = urlAsset.url
+
+            let generator = AVAssetImageGenerator(asset: AVURLAsset(url: videoURL))
+            generator.appliesPreferredTrackTransform = true
+            generator.maximumSize = CGSize(width: 300, height: 300)
+            let time = CMTime(seconds: 0.5, preferredTimescale: 600)
+            guard let cgImage = try? generator.copyCGImage(at: time, actualTime: nil) else { return }
+            let uiImage = UIImage(cgImage: cgImage)
+            Task { @MainActor in
+                self.thumbnail = uiImage
             }
         }
     }
