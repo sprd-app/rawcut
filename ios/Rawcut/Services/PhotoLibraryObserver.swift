@@ -37,13 +37,16 @@ final class PhotoLibraryObserver: NSObject, ObservableObject {
 
     func requestAuthorization() async {
         let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
-        updateAuthorizationStatus(from: status)
+        // Ensure we're back on MainActor after the await
+        await MainActor.run {
+            updateAuthorizationStatus(from: status)
 
-        if status == .authorized || status == .limited {
-            performInitialImport()
-            startObserving()
-        } else {
-            print("[Rawcut] Photo library access denied: \(status.rawValue)")
+            if status == .authorized || status == .limited {
+                performInitialImport()
+                startObserving()
+            } else {
+                print("[Rawcut] Photo library access denied: \(status.rawValue)")
+            }
         }
     }
 
