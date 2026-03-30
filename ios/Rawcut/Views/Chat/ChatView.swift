@@ -59,6 +59,20 @@ struct ChatView: View {
         .navigationTitle("Create")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbar {
+            if !messages.isEmpty {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        messages.removeAll()
+                        currentScript = nil
+                        inputText = ""
+                    } label: {
+                        Image(systemName: "plus.message")
+                    }
+                    .tint(Color.rcAccent)
+                }
+            }
+        }
         .sheet(item: $activeRender) { render in
             RenderStatusView(renderId: render.id)
         }
