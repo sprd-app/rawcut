@@ -162,8 +162,9 @@ struct OnboardingView: View {
     }
 
     private func requestPhotoAccess() {
-        PHPhotoLibrary.requestAuthorization(for: .readWrite) { status in
-            Task { @MainActor in
+        Task {
+            let _ = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+            await MainActor.run {
                 withAnimation { currentPage = 2 }
             }
         }
