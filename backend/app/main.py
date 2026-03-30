@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.middleware.auth import AppleAuthMiddleware
 from app.models.database import init_db
-from app.routers import auth, auto_video, health, projects, renders, search, sync_health, tagging, upload
+from app.routers import auth, auto_video, chat, health, projects, renders, search, sync_health, tagging, upload
 
 
 @asynccontextmanager
@@ -43,6 +43,7 @@ app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(upload.router)
 app.include_router(auto_video.router)
+app.include_router(chat.router)
 app.include_router(projects.router)
 app.include_router(renders.router)
 app.include_router(tagging.router)
