@@ -103,6 +103,28 @@ final class PhotoLibraryObserver: NSObject, ObservableObject {
         let context = ModelContext(modelContainer)
         var newCount = 0
 
+        // Collect all valid Photos library identifiers
+        var validIdentifiers = Set<String>()
+        result.enumerateObjects { phAsset, _, _ in
+            validIdentifiers.insert(phAsset.localIdentifier)
+        }
+
+        // Remove orphan assets (in SwiftData but no longer in Photos library)
+        let allDescriptor = FetchDescriptor<MediaAsset>()
+        var orphanCount = 0
+        if let allAssets = try? context.fetch(allDescriptor) {
+            for asset in allAssets {
+                if !validIdentifiers.contains(asset.localIdentifier) {
+                    context.delete(asset)
+                    orphanCount += 1
+                }
+            }
+        }
+        if orphanCount > 0 {
+            print("[Rawcut] Cleaned up \(orphanCount) orphan assets")
+        }
+
+        // Insert new assets
         result.enumerateObjects { [weak self] phAsset, _, _ in
             guard let self else { return }
             if self.insertIfNew(phAsset: phAsset, context: context) {
@@ -112,7 +134,7 @@ final class PhotoLibraryObserver: NSObject, ObservableObject {
 
         do {
             try context.save()
-            print("[Rawcut] Initial import: \(newCount) new assets added")
+            print("[Rawcut] Initial import: \(newCount) new, \(orphanCount) orphans removed")
             syncEngine?.refreshProgress()
             if newCount > 0 {
                 syncEngine?.startSync()

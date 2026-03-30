@@ -137,21 +137,30 @@ struct AssetThumbnailView: View {
             withLocalIdentifiers: [asset.localIdentifier],
             options: nil
         )
-        guard let phAsset = fetchResult.firstObject else { return }
+        guard let phAsset = fetchResult.firstObject else {
+            print("[Rawcut] Thumbnail: PHAsset not found for \(asset.localIdentifier.prefix(20))")
+            return
+        }
 
         let size = CGSize(width: 300, height: 300)
         let options = PHImageRequestOptions()
         options.deliveryMode = .opportunistic
         options.isNetworkAccessAllowed = true
+        options.isSynchronous = false
 
         Self.imageManager.requestImage(
             for: phAsset,
             targetSize: size,
             contentMode: .aspectFill,
             options: options
-        ) { image, _ in
+        ) { image, info in
             Task { @MainActor in
-                self.thumbnail = image
+                if let image {
+                    self.thumbnail = image
+                } else {
+                    let error = info?[PHImageErrorKey] as? Error
+                    print("[Rawcut] Thumbnail: requestImage returned nil for \(self.asset.localIdentifier.prefix(20)), error: \(error?.localizedDescription ?? "none")")
+                }
             }
         }
     }

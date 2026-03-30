@@ -3,7 +3,11 @@ import Foundation
 /// Lightweight client for rawcut backend API calls.
 enum APIClient {
 
+    #if DEBUG
+    static let baseURL = "https://avah-unexploitative-marcelle.ngrok-free.dev"
+    #else
     static let baseURL = "https://rawcut-api.wittygrass-ccc95e2e.koreacentral.azurecontainerapps.io"
+    #endif
 
     // MARK: - Models
 
@@ -78,6 +82,15 @@ enum APIClient {
         let aspect_ratio: String
     }
 
+    enum AutoVideoError: LocalizedError {
+        case serverError(String)
+        var errorDescription: String? {
+            switch self {
+            case .serverError(let msg): return msg
+            }
+        }
+    }
+
     // MARK: - Auto-Video
 
     static func createAutoVideo(
@@ -102,7 +115,14 @@ enum APIClient {
         )
 
         let (data, response) = try await URLSession.shared.data(for: request)
-        try validateResponse(response)
+        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            // Parse server error message
+            struct ErrorDetail: Decodable { let detail: String }
+            if let err = try? JSONDecoder().decode(ErrorDetail.self, from: data) {
+                throw AutoVideoError.serverError(err.detail)
+            }
+            throw URLError(.badServerResponse)
+        }
         return try JSONDecoder().decode(AutoVideoResponse.self, from: data)
     }
 

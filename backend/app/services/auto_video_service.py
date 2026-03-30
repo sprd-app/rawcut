@@ -27,22 +27,22 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 CONTENT_TYPE_LABELS: dict[str, str] = {
-    "talking_head": "인터뷰",
-    "outdoor_walk": "야외",
-    "product_demo": "제품",
-    "screen_recording": "스크린",
-    "whiteboard": "화이트보드",
-    "b_roll_generic": "일상",
+    "talking_head": "Interview",
+    "outdoor_walk": "Outdoor",
+    "product_demo": "Product",
+    "screen_recording": "Screen",
+    "whiteboard": "Whiteboard",
+    "b_roll_generic": "Daily",
 }
 
 
 def generate_title(clips: list[dict[str, Any]], local_date: datetime) -> str:
-    """Generate a Korean title from clip content types and local date."""
-    date_str = f"{local_date.month}월 {local_date.day}일"
+    """Generate a title from clip content types and local date."""
+    date_str = local_date.strftime("%b %d")  # e.g., "Mar 30"
 
     types = [c.get("content_type") for c in clips if c.get("content_type")]
     if not types:
-        return f"{date_str} · 영상"
+        return f"{date_str} · Video"
 
     counter = Counter(types)
     top_types = [t for t, _ in counter.most_common(3)]

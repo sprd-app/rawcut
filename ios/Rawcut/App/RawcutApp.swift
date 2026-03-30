@@ -50,7 +50,12 @@ struct RawcutApp: App {
                     // NetworkMonitor starts automatically in init()
                     // Check current photo authorization (don't auto-request, let UI handle it)
                     photoObserver.refreshAuthorizationStatus()
-                    let status = photoObserver.authorizationStatus
+                    var status = photoObserver.authorizationStatus
+                    print("[Rawcut] Photo auth status: \(status)")
+                    if status == .notDetermined {
+                        await photoObserver.requestAuthorization()
+                        status = photoObserver.authorizationStatus
+                    }
                     if status == .authorized || status == .limited {
                         photoObserver.performInitialImport()
                         photoObserver.startObserving()

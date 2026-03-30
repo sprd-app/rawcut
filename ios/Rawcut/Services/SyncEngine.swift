@@ -347,20 +347,46 @@ final class SyncEngine: ObservableObject {
             let options = PHVideoRequestOptions()
             options.deliveryMode = .highQualityFormat
             options.isNetworkAccessAllowed = true
+            options.version = .current
+
+            // Track whether continuation has been resumed (requestAVAsset
+            // callback can fire multiple times for progress updates)
+            let resumed = UnsafeMutablePointer<Bool>.allocate(capacity: 1)
+            resumed.initialize(to: false)
 
             PHImageManager.default().requestAVAsset(
                 forVideo: phAsset,
                 options: options
-            ) { avAsset, _, _ in
-                guard let urlAsset = avAsset as? AVURLAsset else {
+            ) { avAsset, _, info in
+                // Prevent double-resume crash
+                guard !resumed.pointee else { return }
+
+                // Skip placeholder/degraded callbacks
+                if let isCancelled = info?[PHImageCancelledKey] as? Bool, isCancelled {
+                    resumed.pointee = true
+                    resumed.deallocate()
                     continuation.resume(returning: nil)
                     return
                 }
+
+                guard let urlAsset = avAsset as? AVURLAsset else {
+                    // Only resume with nil if this is the final callback
+                    if info?[PHImageResultIsDegradedKey] as? Bool != true {
+                        resumed.pointee = true
+                        resumed.deallocate()
+                        continuation.resume(returning: nil)
+                    }
+                    return
+                }
+
+                resumed.pointee = true
                 do {
                     try FileManager.default.copyItem(at: urlAsset.url, to: destination)
+                    resumed.deallocate()
                     continuation.resume(returning: destination)
                 } catch {
                     print("[Rawcut] Failed to copy video to temp: \(error.localizedDescription)")
+                    resumed.deallocate()
                     continuation.resume(returning: nil)
                 }
             }

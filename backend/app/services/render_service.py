@@ -207,27 +207,73 @@ async def _ensure_audio(path: Path, output_dir: Path) -> Path:
     return output
 
 
+async def _add_fade(clip: Path, output: Path, fade_in: float, fade_out: float) -> None:
+    """Add fade-in and/or fade-out to a single clip."""
+    duration = await _get_duration(clip)
+    filters = []
+
+    if fade_in > 0:
+        filters.append(f"fade=t=in:st=0:d={fade_in}")
+    if fade_out > 0:
+        start = max(0, duration - fade_out)
+        filters.append(f"fade=t=out:st={start:.2f}:d={fade_out}")
+
+    afilters = []
+    if fade_in > 0:
+        afilters.append(f"afade=t=in:st=0:d={fade_in}")
+    if fade_out > 0:
+        start = max(0, duration - fade_out)
+        afilters.append(f"afade=t=out:st={start:.2f}:d={fade_out}")
+
+    cmd = ["ffmpeg", "-y", "-i", str(clip)]
+    if filters:
+        cmd.extend(["-vf", ",".join(filters)])
+    if afilters:
+        cmd.extend(["-af", ",".join(afilters)])
+    cmd.extend([
+        "-c:v", "libx264", "-preset", "fast", "-crf", "18",
+        "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-b:a", "192k",
+        str(output),
+    ])
+    await _run_ffmpeg(cmd)
+
+
 async def _concatenate_with_crossfade(
     clips: list[Path],
     output: Path,
-    fade_duration: float = 1.0,
+    fade_duration: float = 0.5,
 ) -> None:
-    """Concatenate clips with crossfade transitions.
+    """Concatenate clips with fade-in/out transitions.
 
-    Uses concat demuxer for reliable N-clip concatenation, then applies
-    fade-in/out at clip boundaries. This is more stable than xfade filter
-    chains which break with duration mismatches across many clips.
+    Each clip gets a fade-out at its end and fade-in at its start
+    (except first clip = fade from black, last clip = fade to black).
+    Uses concat demuxer for reliable N-clip joining.
     """
     if len(clips) == 1:
-        cmd = ["ffmpeg", "-y", "-i", str(clips[0]),
-               "-c", "copy", str(output)]
-        await _run_ffmpeg(cmd)
+        # Single clip: just fade in from black and fade out to black
+        await _add_fade(clips[0], output, fade_in=1.0, fade_out=1.0)
         return
 
-    # Write concat list file
+    # Add fades to each clip
+    faded_clips: list[Path] = []
+    for i, clip in enumerate(clips):
+        faded = clip.parent / f"faded_{i:03d}.mp4"
+        is_first = (i == 0)
+        is_last = (i == len(clips) - 1)
+
+        # First clip: 1s fade from black + 0.5s fade out
+        # Last clip: 0.5s fade in + 1s fade to black
+        # Middle clips: 0.5s fade in + 0.5s fade out
+        fin = 1.0 if is_first else fade_duration
+        fout = 1.0 if is_last else fade_duration
+        await _add_fade(clip, faded, fin, fout)
+        faded_clips.append(faded)
+
+    # Concat
     concat_list = output.parent / "concat_list.txt"
     with open(concat_list, "w") as f:
-        for clip in clips:
+        for clip in faded_clips:
             f.write(f"file '{clip}'\n")
 
     cmd = [

@@ -219,6 +219,8 @@ struct ProjectsView: View {
                 // Refresh projects list to show the new auto project
                 await loadProjects()
             }
+        } catch let error as APIClient.AutoVideoError {
+            autoVideoError = error.localizedDescription
         } catch {
             autoVideoError = "Failed to create video"
             print("[Rawcut] Auto-video failed: \(error)")
