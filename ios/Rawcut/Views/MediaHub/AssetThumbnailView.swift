@@ -95,11 +95,11 @@ struct AssetThumbnailView: View {
     private var syncBadge: some View {
         switch asset.syncStatus {
         case .synced:
-            syncIcon(systemName: "checkmark", color: .green)
-                .accessibilityLabel("synced")
+            // No badge — synced is the default state
+            EmptyView()
 
         case .uploading:
-            syncIcon(systemName: "arrow.up", color: .blue)
+            syncIcon(systemName: "arrow.up", color: Color.rcAccent)
                 .opacity(isPulsing ? 0.4 : 1.0)
                 .animation(
                     .easeInOut(duration: 1.0).repeatForever(autoreverses: true),
@@ -108,17 +108,19 @@ struct AssetThumbnailView: View {
                 .accessibilityLabel("uploading")
 
         case .pending:
-            syncIcon(systemName: "clock", color: Color.rcTextTertiary)
+            // Subtle dot only
+            Circle()
+                .fill(Color.rcTextTertiary)
+                .frame(width: 8, height: 8)
                 .accessibilityLabel("pending")
 
         case .failed:
             Button {
                 onRetry?()
             } label: {
-                syncIcon(systemName: "xmark", color: Color.rcError)
+                syncIcon(systemName: "exclamationmark", color: Color.rcError)
             }
             .accessibilityLabel("Upload failed, tap to retry")
-            .accessibilityHint("Retries upload")
         }
     }
 
