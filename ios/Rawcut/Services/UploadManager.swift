@@ -108,7 +108,21 @@ final class UploadManager: NSObject, Sendable {
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+
+        // Set proper content type and filename based on media type
+        let contentType: String
+        let filename: String
+        switch asset.mediaType {
+        case .video:
+            contentType = "video/mp4"
+            filename = "\(asset.localIdentifier.prefix(8)).mp4"
+        case .photo, .livePhoto:
+            contentType = "image/jpeg"
+            filename = "\(asset.localIdentifier.prefix(8)).jpg"
+        }
+
+        request.setValue(contentType, forHTTPHeaderField: "Content-Type")
+        request.setValue(filename, forHTTPHeaderField: "X-Filename")
         request.setValue(asset.localIdentifier, forHTTPHeaderField: "X-Local-Identifier")
         request.setValue(asset.mediaTypeRaw, forHTTPHeaderField: "X-Media-Type")
         request.setValue("\(asset.fileSize)", forHTTPHeaderField: "X-File-Size")
