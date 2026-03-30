@@ -1,8 +1,10 @@
+import SwiftData
 import SwiftUI
 
 /// Shows project clips and allows triggering a cinematic render.
 struct ProjectDetailView: View {
     @EnvironmentObject private var authManager: AuthManager
+    @Query private var allAssets: [MediaAsset]
 
     let project: APIClient.Project
 
@@ -100,26 +102,27 @@ struct ProjectDetailView: View {
     }
 
     private func clipCell(_ clip: APIClient.ProjectClip, index: Int) -> some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 6)
-                .fill(Color.rcSurface)
+        let matchingAsset = allAssets.first { $0.cloudBlobName == clip.blob_name }
 
-            VStack(spacing: Spacing.xs) {
-                Image(systemName: clip.media_type == "video" ? "video.fill" : "photo.fill")
-                    .font(.system(size: 20))
-                    .foregroundStyle(Color.rcAccent)
-
-                Text("\(index + 1)")
-                    .font(.rcCaptionBold)
-                    .foregroundStyle(Color.rcTextSecondary)
-
-                if let contentType = clip.content_type {
-                    Text(contentType.replacingOccurrences(of: "_", with: " "))
-                        .font(.system(size: 9))
-                        .foregroundStyle(Color.rcTextTertiary)
-                        .lineLimit(1)
-                }
+        return ZStack(alignment: .bottomTrailing) {
+            if let asset = matchingAsset {
+                AssetThumbnailView(asset: asset)
+            } else {
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.rcSurface)
+                    .overlay {
+                        Image(systemName: clip.media_type == "video" ? "video.fill" : "photo.fill")
+                            .font(.system(size: 20))
+                            .foregroundStyle(Color.rcAccent)
+                    }
             }
+
+            Text("\(index + 1)")
+                .font(.rcCaptionBold)
+                .foregroundStyle(.white)
+                .frame(width: 20, height: 20)
+                .background(Color.black.opacity(0.6), in: Circle())
+                .padding(4)
         }
         .aspectRatio(1, contentMode: .fit)
     }
