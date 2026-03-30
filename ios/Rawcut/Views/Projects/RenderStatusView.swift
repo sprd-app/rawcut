@@ -41,17 +41,17 @@ struct RenderStatusView: View {
                     }
                     .padding(Spacing.xl)
                 } else {
-                    ProgressView("불러오는 중...")
+                    ProgressView("Loading...")
                         .tint(Color.rcAccent)
                         .foregroundStyle(Color.rcTextSecondary)
                 }
             }
-            .navigationTitle("렌더 상태")
+            .navigationTitle("Render Status")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("닫기") { dismiss() }
+                    Button("Close") { dismiss() }
                         .foregroundStyle(Color.rcAccent)
                 }
             }
@@ -174,11 +174,11 @@ struct RenderStatusView: View {
             )
         }
         .padding(.horizontal, Spacing.xl)
-        .confirmationDialog("프리셋 선택", isPresented: $showingPresetPicker) {
+        .confirmationDialog("Select Preset", isPresented: $showingPresetPicker) {
             Button("Warm Film") { Task { await reRender(preset: "warm_film") } }
             Button("Cool Minimal") { Task { await reRender(preset: "cool_minimal") } }
             Button("Natural Vivid") { Task { await reRender(preset: "natural_vivid") } }
-            Button("취소", role: .cancel) {}
+            Button("Cancel", role: .cancel) {}
         }
     }
 
@@ -191,7 +191,7 @@ struct RenderStatusView: View {
                     .multilineTextAlignment(.center)
             }
 
-            Button("닫기") { dismiss() }
+            Button("Close") { dismiss() }
                 .font(.rcBodyMedium)
                 .foregroundStyle(Color.rcAccent)
         }
@@ -201,20 +201,20 @@ struct RenderStatusView: View {
 
     private func statusTitle(_ render: APIClient.Render) -> String {
         switch render.status {
-        case "queued": return "렌더 대기 중"
-        case "processing": return "렌더링 중..."
-        case "complete": return "렌더 완료!"
-        case "failed": return "렌더 실패"
+        case "queued": return "Render Queued"
+        case "processing": return "Rendering..."
+        case "complete": return "Render Complete!"
+        case "failed": return "Render Failed"
         default: return render.status
         }
     }
 
     private func statusSubtitle(_ render: APIClient.Render) -> String {
         switch render.status {
-        case "queued": return "곧 시작됩니다"
-        case "processing": return "영상을 처리하고 있습니다"
-        case "complete": return "시네마틱 영상이 준비되었습니다"
-        case "failed": return "문제가 발생했습니다"
+        case "queued": return "Starting soon"
+        case "processing": return "Processing your video"
+        case "complete": return "Your cinematic video is ready"
+        case "failed": return "Something went wrong"
         default: return ""
         }
     }
@@ -222,11 +222,11 @@ struct RenderStatusView: View {
     private func progressDetail(_ render: APIClient.Render) -> String {
         let pct = Int(render.progress * 100)
         if pct < 30 {
-            return "클립 다운로드 중..."
+            return "Downloading clips..."
         } else if pct < 80 {
-            return "색보정 및 필터 적용 중..."
+            return "Applying color grading..."
         } else {
-            return "최종 합성 중..."
+            return "Final compositing..."
         }
     }
 
