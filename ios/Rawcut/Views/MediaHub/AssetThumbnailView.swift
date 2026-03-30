@@ -1,4 +1,3 @@
-import AVFoundation
 import Photos
 import SwiftUI
 
@@ -138,58 +137,24 @@ struct AssetThumbnailView: View {
             withLocalIdentifiers: [asset.localIdentifier],
             options: nil
         )
-        guard let phAsset = fetchResult.firstObject else {
-            print("[Rawcut] Thumbnail: PHAsset not found for \(asset.localIdentifier.prefix(20))")
-            return
-        }
+        guard let phAsset = fetchResult.firstObject else { return }
 
         let size = CGSize(width: 300, height: 300)
         let options = PHImageRequestOptions()
-        options.deliveryMode = .fastFormat
+        options.deliveryMode = .opportunistic
         options.isNetworkAccessAllowed = true
         options.isSynchronous = false
-        options.resizeMode = .fast
 
         Self.imageManager.requestImage(
             for: phAsset,
             targetSize: size,
             contentMode: .aspectFill,
             options: options
-        ) { image, info in
+        ) { image, _ in
             Task { @MainActor in
                 if let image {
                     self.thumbnail = image
-                } else if self.thumbnail == nil {
-                    // Fallback: generate thumbnail from video asset
-                    if self.asset.mediaType == .video {
-                        self.loadVideoThumbnail(phAsset: phAsset)
-                    }
                 }
-            }
-        }
-    }
-
-    private func loadVideoThumbnail(phAsset: PHAsset) {
-        // Extract video URL, then generate thumbnail off-main
-        let options = PHVideoRequestOptions()
-        options.isNetworkAccessAllowed = true
-        options.version = .current
-
-        PHImageManager.default().requestAVAsset(forVideo: phAsset, options: options) { avAsset, _, info in
-            // Skip degraded/progress callbacks
-            if info?[PHImageResultIsDegradedKey] as? Bool == true { return }
-
-            guard let urlAsset = avAsset as? AVURLAsset else { return }
-            let videoURL = urlAsset.url
-
-            let generator = AVAssetImageGenerator(asset: AVURLAsset(url: videoURL))
-            generator.appliesPreferredTrackTransform = true
-            generator.maximumSize = CGSize(width: 300, height: 300)
-            let time = CMTime(seconds: 0.5, preferredTimescale: 600)
-            guard let cgImage = try? generator.copyCGImage(at: time, actualTime: nil) else { return }
-            let uiImage = UIImage(cgImage: cgImage)
-            Task { @MainActor in
-                self.thumbnail = uiImage
             }
         }
     }
