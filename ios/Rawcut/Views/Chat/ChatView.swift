@@ -73,9 +73,6 @@ struct ChatView: View {
                 }
             }
         }
-        .sheet(item: $activeRender) { render in
-            RenderStatusView(renderId: render.id)
-        }
         .task {
             await loadSuggestions()
         }
@@ -148,6 +145,38 @@ struct ChatView: View {
                     .padding(.leading, 60)
             }
             .padding(.horizontal, Spacing.lg)
+            .id(message.id)
+        } else if let videoURL = message.videoURL {
+            // Rendered video inline
+            VStack(alignment: .leading, spacing: Spacing.sm) {
+                Text(message.text)
+                    .font(.rcBody)
+                    .foregroundStyle(Color.rcTextPrimary)
+                    .padding(.horizontal, Spacing.lg)
+
+                InlineVideoPlayer(urlString: videoURL)
+                    .frame(height: 220)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .padding(.horizontal, Spacing.lg)
+
+                Text("Type feedback to refine, or share when ready")
+                    .font(.rcCaption)
+                    .foregroundStyle(Color.rcTextTertiary)
+                    .padding(.horizontal, Spacing.lg)
+            }
+            .id(message.id)
+        } else if let renderId = message.renderId {
+            // Render in progress
+            RenderProgressBubble(renderId: renderId, token: authManager.authToken ?? "") { url in
+                // Replace this message with video player
+                if let idx = messages.firstIndex(where: { $0.id == message.id }) {
+                    messages[idx] = ChatMessage(
+                        text: "Your vlog is ready!",
+                        isUser: false,
+                        videoURL: url
+                    )
+                }
+            }
             .id(message.id)
         } else if let script = message.script {
             // AI message with script
@@ -377,11 +406,14 @@ struct ChatView: View {
                     authToken: token
                 )
 
-                messages.append(ChatMessage(text: "Rendering your vlog! This takes 1-2 minutes.", isUser: false))
                 isLoading = false
 
-                // 4. Show render status
-                activeRender = render
+                // 4. Show render progress inline in chat
+                messages.append(ChatMessage(
+                    text: "Rendering your vlog...",
+                    isUser: false,
+                    renderId: render.id
+                ))
 
             } catch {
                 messages.append(ChatMessage(text: "Failed: \(error.localizedDescription)", isUser: false))
@@ -398,6 +430,8 @@ struct ChatMessage: Identifiable {
     let text: String
     let isUser: Bool
     var script: ScriptResponse?
+    var renderId: String?
+    var videoURL: String?
 }
 
 struct ScriptResponse: Codable {
