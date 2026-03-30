@@ -15,7 +15,7 @@ final class AuthManager: NSObject, ObservableObject {
     private static let serverTokenKey = "server_jwt_token"
 
     #if DEBUG
-    private static let backendBaseURL = "https://avah-unexploitative-marcelle.ngrok-free.dev"
+    private static let backendBaseURL = "http://localhost:8100"
     #else
     private static let backendBaseURL = "https://rawcut-api.wittygrass-ccc95e2e.koreacentral.azurecontainerapps.io"
     #endif

@@ -4,7 +4,7 @@ import Foundation
 enum APIClient {
 
     #if DEBUG
-    static let baseURL = "https://avah-unexploitative-marcelle.ngrok-free.dev"
+    static let baseURL = "http://localhost:8100"
     #else
     static let baseURL = "https://rawcut-api.wittygrass-ccc95e2e.koreacentral.azurecontainerapps.io"
     #endif

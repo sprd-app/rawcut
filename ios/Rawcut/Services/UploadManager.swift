@@ -49,14 +49,19 @@ final class UploadManager: NSObject, Sendable {
     private let authManager: AuthManager
     private let baseURL: URL
 
-    init(authManager: AuthManager, baseURL: URL = URL(string: "https://rawcut-api.wittygrass-ccc95e2e.koreacentral.azurecontainerapps.io")!) {
+    init(authManager: AuthManager, baseURL: URL = URL(string: APIClient.baseURL)!) {
         self.authManager = authManager
         self.baseURL = baseURL
 
+        #if DEBUG
+        // Use default session for simulator (background session requires HTTPS)
+        let config = URLSessionConfiguration.default
+        #else
         let config = URLSessionConfiguration.background(withIdentifier: Self.sessionIdentifier)
         config.isDiscretionary = false
         config.sessionSendsLaunchEvents = true
         config.allowsCellularAccess = true
+        #endif
 
         let tempSession = URLSession(configuration: config)
         self.session = tempSession
@@ -65,10 +70,14 @@ final class UploadManager: NSObject, Sendable {
         super.init()
 
         // Re-create session with delegate now that self is initialized
+        #if DEBUG
+        let delegateConfig = URLSessionConfiguration.default
+        #else
         let delegateConfig = URLSessionConfiguration.background(withIdentifier: Self.sessionIdentifier)
         delegateConfig.isDiscretionary = false
         delegateConfig.sessionSendsLaunchEvents = true
         delegateConfig.allowsCellularAccess = true
+        #endif
     }
 
     // MARK: - Session (nonisolated for Sendable)
@@ -109,6 +118,19 @@ final class UploadManager: NSObject, Sendable {
 
         let localId = asset.localIdentifier
         let fileSize = asset.fileSize
+
+        #if DEBUG
+        // Use simple URLSession.upload for simulator (no background session needed)
+        print("[Rawcut] Upload started: \(localId) (\(fileSize) bytes)")
+        let (data, response) = try await URLSession.shared.upload(for: request, fromFile: fileURL)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw UploadError.serverError(statusCode: (response as? HTTPURLResponse)?.statusCode ?? 0, message: "Upload failed")
+        }
+        struct UploadResponse: Decodable { let blob_name: String; let size: Int }
+        let result = try JSONDecoder().decode(UploadResponse.self, from: data)
+        print("[Rawcut] Upload complete: \(localId) -> \(result.blob_name)")
+        return UploadResult(cloudBlobName: result.blob_name, bytesUploaded: Int64(result.size))
+        #else
         let uploads = activeUploads
         let session = backgroundSession
 
@@ -123,6 +145,7 @@ final class UploadManager: NSObject, Sendable {
             task.resume()
             print("[Rawcut] Upload started: \(localId) (\(fileSize) bytes)")
         }
+        #endif
     }
 
     // MARK: - Background Events

@@ -70,6 +70,17 @@ final class SyncEngine: ObservableObject {
             return
         }
 
+        // Reset stale "uploading" assets back to pending (from previous crash/restart)
+        let context = ModelContext(modelContainer)
+        let uploadingPredicate = #Predicate<MediaAsset> { $0.syncStatusRaw == "uploading" }
+        if let stale = try? context.fetch(FetchDescriptor<MediaAsset>(predicate: uploadingPredicate)), !stale.isEmpty {
+            for asset in stale {
+                asset.syncStatus = .pending
+            }
+            try? context.save()
+            print("[Rawcut] Reset \(stale.count) stale uploading assets to pending")
+        }
+
         isPaused = false
         isSyncing = true
         syncStatusMessage = "Syncing..."
@@ -343,14 +354,18 @@ final class SyncEngine: ObservableObject {
     }
 
     private func exportVideo(phAsset: PHAsset, to destination: URL) async -> URL? {
-        await withCheckedContinuation { continuation in
+        await Self._exportVideoOffMain(phAsset: phAsset, to: destination)
+    }
+
+    /// Runs off MainActor to avoid dispatch_assert_queue crash from
+    /// PHImageManager callbacks that fire on background queues.
+    nonisolated private static func _exportVideoOffMain(phAsset: PHAsset, to destination: URL) async -> URL? {
+        await withUnsafeContinuation { continuation in
             let options = PHVideoRequestOptions()
             options.deliveryMode = .highQualityFormat
             options.isNetworkAccessAllowed = true
             options.version = .current
 
-            // Track whether continuation has been resumed (requestAVAsset
-            // callback can fire multiple times for progress updates)
             let resumed = UnsafeMutablePointer<Bool>.allocate(capacity: 1)
             resumed.initialize(to: false)
 
@@ -358,10 +373,8 @@ final class SyncEngine: ObservableObject {
                 forVideo: phAsset,
                 options: options
             ) { avAsset, _, info in
-                // Prevent double-resume crash
                 guard !resumed.pointee else { return }
 
-                // Skip placeholder/degraded callbacks
                 if let isCancelled = info?[PHImageCancelledKey] as? Bool, isCancelled {
                     resumed.pointee = true
                     resumed.deallocate()
@@ -370,7 +383,6 @@ final class SyncEngine: ObservableObject {
                 }
 
                 guard let urlAsset = avAsset as? AVURLAsset else {
-                    // Only resume with nil if this is the final callback
                     if info?[PHImageResultIsDegradedKey] as? Bool != true {
                         resumed.pointee = true
                         resumed.deallocate()

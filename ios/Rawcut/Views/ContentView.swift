@@ -23,7 +23,9 @@ struct ContentView: View {
             .tag(Tab.library)
 
             NavigationStack {
-                CreateView { _ in }
+                CreateView { _ in
+                    selectedTab = .projects
+                }
             }
             .tabItem {
                 Label("Create", systemImage: "plus.circle.fill")
