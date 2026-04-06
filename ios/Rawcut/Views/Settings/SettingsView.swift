@@ -200,21 +200,21 @@ struct SettingsView: View {
             // Optimize Storage (like iCloud's "Optimize iPhone Storage")
             Toggle(isOn: $optimizeStorage) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("iPhone 저장공간 최적화")
+                    Text("Optimize iPhone Storage")
                         .font(.rcBody)
                         .foregroundStyle(Color.rcTextPrimary)
-                    Text("용량이 부족하면 오래된 미디어를 자동으로 정리합니다")
+                    Text("Automatically removes old media when storage is low")
                         .font(.rcCaption)
                         .foregroundStyle(Color.rcTextSecondary)
                 }
             }
             .tint(Color.rcAccent)
             .listRowBackground(Color.rcSurface)
-            .accessibilityLabel("iPhone 저장공간 최적화")
+            .accessibilityLabel("Optimize iPhone Storage")
 
             // Device free space indicator
             HStack {
-                Text("기기 여유 공간")
+                Text("Device Free Space")
                     .font(.rcBody)
                     .foregroundStyle(Color.rcTextPrimary)
                 Spacer()

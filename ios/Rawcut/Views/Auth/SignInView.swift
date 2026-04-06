@@ -23,7 +23,7 @@ struct SignInView: View {
                         .font(.rcDisplay)
                         .foregroundStyle(Color.rcTextPrimary)
 
-                    Text("내 미디어, 내 클라우드")
+                    Text("My media, my cloud")
                         .font(.rcBody)
                         .foregroundStyle(Color.rcTextSecondary)
                 }
@@ -56,7 +56,7 @@ struct SignInView: View {
                 .frame(width: 0, height: 0)
                 .hidden()
 
-                Text("Apple 계정으로 안전하게 로그인")
+                Text("Sign in securely with your Apple account")
                     .font(.rcCaption)
                     .foregroundStyle(Color.rcTextTertiary)
                     .padding(.bottom, Spacing.xxl)

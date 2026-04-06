@@ -20,7 +20,7 @@ struct CloudAssetDownloadSheet: View {
 
             // Asset info
             VStack(spacing: Spacing.sm) {
-                Text(asset.mediaType == .video ? "동영상" : "사진")
+                Text(asset.mediaType == .video ? "Video" : "Photo")
                     .font(.rcTitleMedium)
                     .foregroundStyle(Color.rcTextPrimary)
 
@@ -28,7 +28,7 @@ struct CloudAssetDownloadSheet: View {
                     .font(.rcBody)
                     .foregroundStyle(Color.rcTextSecondary)
 
-                Text("iCloud에서 삭제됨 · 클라우드에 보관 중")
+                Text("Removed from iCloud · Stored in cloud")
                     .font(.rcCaption)
                     .foregroundStyle(Color.rcTextTertiary)
             }
@@ -52,7 +52,7 @@ struct CloudAssetDownloadSheet: View {
                     } else {
                         Image(systemName: "arrow.down.circle.fill")
                     }
-                    Text(downloadManager.isDownloading ? "다운로드 중..." : "기기에 다운로드")
+                    Text(downloadManager.isDownloading ? "Downloading..." : "Download to Device")
                         .font(.rcBody)
                         .fontWeight(.semibold)
                 }
@@ -86,7 +86,7 @@ struct CloudAssetDownloadSheet: View {
                         Image(systemName: "icloud")
                             .font(.system(size: 40))
                             .foregroundStyle(Color.rcAccent)
-                        Text("미리보기 없음")
+                        Text("No preview available")
                             .font(.rcCaption)
                             .foregroundStyle(Color.rcTextTertiary)
                     }
@@ -99,7 +99,7 @@ struct CloudAssetDownloadSheet: View {
     private func download() async {
         errorMessage = nil
         guard let blobName = asset.cloudBlobName else {
-            errorMessage = "클라우드 파일을 찾을 수 없습니다"
+            errorMessage = "Cloud file not found"
             return
         }
 
