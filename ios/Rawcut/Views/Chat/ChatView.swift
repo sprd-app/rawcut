@@ -82,6 +82,7 @@ struct ChatView: View {
                         .font(.system(size: 15))
                 }
                 .tint(Color.rcAccent)
+                .accessibilityLabel("Session history")
             }
             ToolbarItem(placement: .topBarTrailing) {
                 if !messages.isEmpty {
@@ -90,6 +91,7 @@ struct ChatView: View {
                             .font(.system(size: 15))
                     }
                     .tint(Color.rcAccent)
+                    .accessibilityLabel("New session")
                 }
             }
         }
@@ -549,6 +551,7 @@ struct ChatView: View {
                         .font(.system(size: 18))
                         .foregroundStyle(Color.rcTextSecondary)
                 }
+                .accessibilityLabel("Attach photos or videos")
                 .onChange(of: selectedPhotos) { _, items in
                     Task { await loadSelectedPhotos(items) }
                 }
@@ -592,6 +595,7 @@ struct ChatView: View {
                             )
                     }
                     .disabled(inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && attachedImages.isEmpty)
+                    .accessibilityLabel("Send message")
                 }
             }
             .padding(.horizontal, Spacing.md)
