@@ -59,7 +59,7 @@ struct CloudAssetDownloadSheet: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, Spacing.md)
                 .background(Color.rcAccent, in: RoundedRectangle(cornerRadius: 12))
-                .foregroundStyle(.white)
+                .foregroundStyle(.black)
             }
             .disabled(downloadManager.isDownloading)
             .padding(.bottom, Spacing.lg)
