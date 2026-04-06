@@ -33,6 +33,11 @@
 	<string>rawcut needs access to your photos and videos to sync them to the cloud.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>rawcut uses speech recognition for voice-to-text script input.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>

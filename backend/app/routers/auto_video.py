@@ -72,17 +72,17 @@ async def auto_video(
             pending = int(parts[2])
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"태깅이 완료될 때까지 잠시 기다려주세요. ({tagged}개 완료, {pending}개 대기 중)",
+                detail=f"Waiting for tagging to complete. ({tagged} done, {pending} pending)",
             ) from exc
         if msg.startswith("NOT_ENOUGH_CLIPS:"):
             count = int(msg.split(":")[1])
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"촬영을 더 해주세요. 최소 3개의 동영상이 필요합니다. (현재 {count}개)",
+                detail=f"Not enough clips. Need at least 3 videos. (currently {count})",
             ) from exc
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="서버 오류. 다시 시도해주세요.",
+            detail="Server error. Please try again.",
         ) from exc
 
     # If existing active render, return with 200 (not 201)

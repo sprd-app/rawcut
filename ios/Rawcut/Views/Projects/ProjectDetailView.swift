@@ -1,8 +1,10 @@
+import SwiftData
 import SwiftUI
 
 /// Shows project clips and allows triggering a cinematic render.
 struct ProjectDetailView: View {
     @EnvironmentObject private var authManager: AuthManager
+    @Query private var allAssets: [MediaAsset]
 
     let project: APIClient.Project
 
@@ -16,9 +18,9 @@ struct ProjectDetailView: View {
     @State private var errorMessage: String?
 
     private let presets: [(id: String, label: String, desc: String)] = [
-        ("warm_film", "Warm Film", "Kodak 감성, 따뜻한 톤"),
-        ("cool_minimal", "Cool Minimal", "차가운 톤, 스타트업 느낌"),
-        ("natural_vivid", "Natural Vivid", "선명한 자연색"),
+        ("warm_film", "Warm Film", "Kodak-inspired warm tones"),
+        ("cool_minimal", "Cool Minimal", "Cool desaturated, startup feel"),
+        ("natural_vivid", "Natural Vivid", "Vivid natural colors"),
     ]
 
     private let ratios: [(id: String, label: String)] = [
@@ -76,12 +78,12 @@ struct ProjectDetailView: View {
 
     private var clipsSection: some View {
         VStack(alignment: .leading, spacing: Spacing.sm) {
-            Text("클립 (\(clips.count))")
+            Text("Clips (\(clips.count))")
                 .font(.rcTitleMedium)
                 .foregroundStyle(Color.rcTextPrimary)
 
             if clips.isEmpty {
-                Text("프로젝트에 클립이 없습니다.")
+                Text("No clips in this project.")
                     .font(.rcBody)
                     .foregroundStyle(Color.rcTextTertiary)
                     .frame(maxWidth: .infinity, alignment: .center)
@@ -100,33 +102,34 @@ struct ProjectDetailView: View {
     }
 
     private func clipCell(_ clip: APIClient.ProjectClip, index: Int) -> some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 6)
-                .fill(Color.rcSurface)
+        let matchingAsset = allAssets.first { $0.cloudBlobName == clip.blob_name }
 
-            VStack(spacing: Spacing.xs) {
-                Image(systemName: clip.media_type == "video" ? "video.fill" : "photo.fill")
-                    .font(.system(size: 20))
-                    .foregroundStyle(Color.rcAccent)
-
-                Text("\(index + 1)")
-                    .font(.rcCaptionBold)
-                    .foregroundStyle(Color.rcTextSecondary)
-
-                if let contentType = clip.content_type {
-                    Text(contentType.replacingOccurrences(of: "_", with: " "))
-                        .font(.system(size: 9))
-                        .foregroundStyle(Color.rcTextTertiary)
-                        .lineLimit(1)
-                }
+        return ZStack(alignment: .bottomTrailing) {
+            if let asset = matchingAsset {
+                AssetThumbnailView(asset: asset)
+            } else {
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.rcSurface)
+                    .overlay {
+                        Image(systemName: clip.media_type == "video" ? "video.fill" : "photo.fill")
+                            .font(.system(size: 20))
+                            .foregroundStyle(Color.rcAccent)
+                    }
             }
+
+            Text("\(index + 1)")
+                .font(.rcCaptionBold)
+                .foregroundStyle(.white)
+                .frame(width: 20, height: 20)
+                .background(Color.black.opacity(0.6), in: Circle())
+                .padding(4)
         }
         .aspectRatio(1, contentMode: .fit)
     }
 
     private var presetSection: some View {
         VStack(alignment: .leading, spacing: Spacing.sm) {
-            Text("프리셋")
+            Text("Preset")
                 .font(.rcTitleMedium)
                 .foregroundStyle(Color.rcTextPrimary)
 
@@ -165,7 +168,7 @@ struct ProjectDetailView: View {
 
     private var ratioSection: some View {
         VStack(alignment: .leading, spacing: Spacing.sm) {
-            Text("화면 비율")
+            Text("Aspect Ratio")
                 .font(.rcTitleMedium)
                 .foregroundStyle(Color.rcTextPrimary)
 
@@ -201,7 +204,7 @@ struct ProjectDetailView: View {
                             .tint(.black)
                     } else {
                         Image(systemName: "film")
-                        Text("렌더 시작")
+                        Text("Start Render")
                             .font(.rcBodyMedium)
                     }
                     Spacer()
@@ -227,7 +230,7 @@ struct ProjectDetailView: View {
         Group {
             if !renders.isEmpty {
                 VStack(alignment: .leading, spacing: Spacing.sm) {
-                    Text("렌더 기록")
+                    Text("Render History")
                         .font(.rcTitleMedium)
                         .foregroundStyle(Color.rcTextPrimary)
 
@@ -264,10 +267,10 @@ struct ProjectDetailView: View {
 
     private func renderStatusText(_ render: APIClient.Render) -> String {
         switch render.status {
-        case "queued": return "대기 중..."
-        case "processing": return "렌더링 \(Int(render.progress * 100))%"
-        case "complete": return "완료"
-        case "failed": return render.error ?? "실패"
+        case "queued": return "Queued..."
+        case "processing": return "Rendering \(Int(render.progress * 100))%"
+        case "complete": return "Complete"
+        case "failed": return render.error ?? "Failed"
         default: return render.status
         }
     }
@@ -308,7 +311,7 @@ struct ProjectDetailView: View {
 
     private func startRender() async {
         guard let token = authManager.authToken else {
-            errorMessage = "인증이 필요합니다."
+            errorMessage = "Sign in required."
             return
         }
 
@@ -326,7 +329,7 @@ struct ProjectDetailView: View {
             // Refresh renders list
             renders.insert(render, at: 0)
         } catch {
-            errorMessage = "렌더 시작에 실패했습니다."
+            errorMessage = "Failed to start render."
             print("[Rawcut] Render start failed: \(error)")
         }
 

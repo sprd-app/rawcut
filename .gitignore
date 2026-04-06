@@ -1,68 +1,55 @@
-# Xcode
-build/
-DerivedData/
-*.xcuserstate
-*.xcworkspace/xcuserdata/
-*.pbxuser
-*.mode1v3
-*.mode2v3
-*.perspectivev3
-*.xccheckout
-*.moved-aside
 
-# Swift Package Manager
-.build/
-Packages/
-
-# Python
 __pycache__/
-*.py[cod]
-*$py.class
-
-# SQLite (local dev DB)
-*.db
 !backend/luts/.gitkeep
-*.so
-.venv/
-venv/
-*.egg-info/
-dist/
-
-# Environment
-.env
-.env.local
-*.key
-
-# IDE
-.vscode/
-.idea/
-
-# OS
+.build/
 .DS_Store
-Thumbs.db
-
-# Azure
-openai.json
-
-# gstack
-.gstack/
-__pycache__/
-prototypes/
-
-# Secrets
 .env
 .env.local
 .env.production
-*.pem
-*.p12
+.gstack/
+.idea/
+.references/
+.terraform/
+.venv/
+.vscode/
+*.db
+*.egg-info/
 *.key
-~/.gstack/openai.json
-
-# Xcode user data
-*.xcuserdata/
-xcuserdata/
-
-# Terraform state (if any)
+*.mode1v3
+*.mode2v3
+*.moved-aside
+*.p12
+*.pbxuser
+*.pem
+*.perspectivev3
+*.py[cod]
+*.so
 *.tfstate
 *.tfstate.*
-.terraform/
+*.xccheckout
+*.xcuserdata/
+*.xcuserstate
+*.xcworkspace/xcuserdata/
+*$py.class
+# Azure
+# Environment
+# gstack
+# IDE
+# OS
+# Python
+# Secrets
+# SQLite (local dev DB)
+# Swift Package Manager
+# Terraform state (if any)
+# Xcode
+# Xcode user data
+~/.gstack/openai.json
+build/
+DerivedData/
+dist/
+openai.json
+Packages/
+prototypes/
+Thumbs.db
+venv/
+xcuserdata/

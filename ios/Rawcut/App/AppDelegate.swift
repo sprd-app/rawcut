@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, @unchecked Sendable {
 
     // Set from RawcutApp after services are initialized
     weak var syncEngine: SyncEngine?
+    var uploadManager: UploadManager?
 
     // MARK: - UIApplicationDelegate
 
@@ -36,6 +37,21 @@ final class AppDelegate: NSObject, UIApplicationDelegate, @unchecked Sendable {
         didFailToRegisterForRemoteNotificationsWithError error: any Error
     ) {
         print("[Rawcut] Failed to register for remote notifications: \(error.localizedDescription)")
+    }
+
+    // MARK: - Background URL Session
+
+    func application(
+        _ application: UIApplication,
+        handleEventsForBackgroundURLSession identifier: String,
+        completionHandler: @escaping @Sendable () -> Void
+    ) {
+        guard identifier == UploadManager.sessionIdentifier else {
+            completionHandler()
+            return
+        }
+        print("[Rawcut] System woke app for background upload session")
+        uploadManager?.handleBackgroundEvents(completionHandler: completionHandler)
     }
 
     // MARK: - Push Notifications

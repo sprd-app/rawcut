@@ -3,9 +3,12 @@ import SwiftUI
 
 /// Enhanced thumbnail component for the media grid.
 /// Square thumbnail with rounded corners (12pt), sync badge, video duration, and content tag.
+/// Shows inline download progress for cloud-only assets being restored.
 struct AssetThumbnailView: View {
     let asset: MediaAsset
     var onRetry: (() -> Void)? = nil
+    /// Download progress (0.0 to 1.0), nil when not downloading
+    var downloadProgress: Double? = nil
 
     @State private var thumbnail: UIImage?
     @State private var isPulsing = false
@@ -19,8 +22,19 @@ struct AssetThumbnailView: View {
                 .aspectRatio(1, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
 
+            // Download progress overlay
+            if let progress = downloadProgress {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.black.opacity(0.5))
+
+                // Circular progress indicator
+                CircularProgressView(progress: progress)
+                    .frame(width: 36, height: 36)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+
             // Content type tag (top-left)
-            if let firstTag = asset.tags?.first {
+            if let firstTag = asset.tags?.first, downloadProgress == nil {
                 Text(firstTag)
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(.white)
@@ -32,21 +46,23 @@ struct AssetThumbnailView: View {
             }
 
             // Bottom-right overlays
-            VStack(alignment: .trailing, spacing: Spacing.xs) {
-                Spacer()
-                HStack(spacing: Spacing.xs) {
+            if downloadProgress == nil {
+                VStack(alignment: .trailing, spacing: Spacing.xs) {
                     Spacer()
+                    HStack(spacing: Spacing.xs) {
+                        Spacer()
 
-                    // Video duration badge
-                    if asset.mediaType == .video {
-                        durationBadge
+                        // Video duration badge
+                        if asset.mediaType == .video {
+                            durationBadge
+                        }
+
+                        // Sync status indicator
+                        syncBadge
                     }
-
-                    // Sync status indicator
-                    syncBadge
                 }
+                .padding(Spacing.sm)
             }
-            .padding(Spacing.sm)
         }
         .onAppear {
             loadThumbnail()
@@ -95,11 +111,11 @@ struct AssetThumbnailView: View {
     private var syncBadge: some View {
         switch asset.syncStatus {
         case .synced:
-            syncIcon(systemName: "checkmark", color: .green)
-                .accessibilityLabel("synced")
+            // No badge — synced is the default state
+            EmptyView()
 
         case .uploading:
-            syncIcon(systemName: "arrow.up", color: .blue)
+            syncIcon(systemName: "arrow.up", color: Color.rcAccent)
                 .opacity(isPulsing ? 0.4 : 1.0)
                 .animation(
                     .easeInOut(duration: 1.0).repeatForever(autoreverses: true),
@@ -108,17 +124,23 @@ struct AssetThumbnailView: View {
                 .accessibilityLabel("uploading")
 
         case .pending:
-            syncIcon(systemName: "clock", color: Color.rcTextTertiary)
+            // Subtle dot only
+            Circle()
+                .fill(Color.rcTextTertiary)
+                .frame(width: 8, height: 8)
                 .accessibilityLabel("pending")
 
         case .failed:
             Button {
                 onRetry?()
             } label: {
-                syncIcon(systemName: "xmark", color: Color.rcError)
+                syncIcon(systemName: "exclamationmark", color: Color.rcError)
             }
             .accessibilityLabel("Upload failed, tap to retry")
-            .accessibilityHint("Retries upload")
+
+        case .cloudOnly:
+            syncIcon(systemName: "icloud", color: Color.rcAccent)
+                .accessibilityLabel("cloud only")
         }
     }
 
@@ -133,26 +155,39 @@ struct AssetThumbnailView: View {
     // MARK: - Thumbnail Loading
 
     private func loadThumbnail() {
+        // Try loading from Photos library first
         let fetchResult = PHAsset.fetchAssets(
             withLocalIdentifiers: [asset.localIdentifier],
             options: nil
         )
-        guard let phAsset = fetchResult.firstObject else { return }
 
-        let size = CGSize(width: 300, height: 300)
-        let options = PHImageRequestOptions()
-        options.deliveryMode = .opportunistic
-        options.isNetworkAccessAllowed = true
+        if let phAsset = fetchResult.firstObject {
+            let scale = UIScreen.main.scale
+            let cellWidth: CGFloat = (UIScreen.main.bounds.width - 4) / 3 // 3-column grid with 2pt spacing
+            let size = CGSize(width: cellWidth * scale, height: cellWidth * scale)
+            let options = PHImageRequestOptions()
+            options.deliveryMode = .opportunistic
+            options.isNetworkAccessAllowed = true
+            options.isSynchronous = false
 
-        Self.imageManager.requestImage(
-            for: phAsset,
-            targetSize: size,
-            contentMode: .aspectFill,
-            options: options
-        ) { image, _ in
-            Task { @MainActor in
-                self.thumbnail = image
+            Self.imageManager.requestImage(
+                for: phAsset,
+                targetSize: size,
+                contentMode: .aspectFill,
+                options: options
+            ) { image, _ in
+                Task { @MainActor in
+                    if let image {
+                        self.thumbnail = image
+                    }
+                }
             }
+            return
+        }
+
+        // Fallback: load cached thumbnail for cloud-only assets
+        if let cached = StorageManager.loadCachedThumbnail(fileName: asset.cachedThumbnail) {
+            thumbnail = cached
         }
     }
 
@@ -173,8 +208,38 @@ struct AssetThumbnailView: View {
         case .uploading: status = "uploading"
         case .pending: status = "pending"
         case .failed: status = "upload failed"
+        case .cloudOnly: status = "cloud only"
         }
         return "\(type), \(status)"
+    }
+}
+
+// MARK: - Circular Progress View
+
+/// Minimal circular progress indicator for download overlays.
+private struct CircularProgressView: View {
+    let progress: Double
+
+    var body: some View {
+        ZStack {
+            // Background circle
+            Circle()
+                .fill(Color.black.opacity(0.6))
+
+            // Progress arc
+            Circle()
+                .trim(from: 0, to: max(progress, 0.02))
+                .stroke(Color.white, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .padding(6)
+
+            // Center icon
+            if progress < 0.01 {
+                ProgressView()
+                    .tint(.white)
+                    .scaleEffect(0.7)
+            }
+        }
     }
 }
 
@@ -197,11 +262,10 @@ struct AssetThumbnailView: View {
             ))
             AssetThumbnailView(asset: MediaAsset(
                 localIdentifier: "preview-3",
-                syncStatus: .failed,
+                syncStatus: .cloudOnly,
                 fileSize: 1_000_000,
-                mediaType: .video,
-                tags: ["outdoor"]
-            ))
+                mediaType: .photo
+            ), downloadProgress: 0.65)
         }
     }
     .modelContainer(for: MediaAsset.self, inMemory: true)

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
-from typing import AsyncIterator
 
 from azure.storage.blob import (
     BlobSasPermissions,
@@ -126,6 +126,75 @@ async def list_blobs(prefix: str = "") -> list[dict[str, str | int]]:
         async for blob in container.list_blobs(name_starts_with=prefix):
             results.append({"name": blob.name, "size": blob.size})
     return results
+
+
+async def stage_block(blob_name: str, block_id: str, data: bytes) -> None:
+    """Stage a single block for a Block Blob (used by chunked upload).
+
+    Args:
+        blob_name: Destination blob name.
+        block_id: Unique block identifier (must be consistent across retries).
+        data: Raw bytes for this block.
+    """
+    async with _async_service_client() as service:
+        container = service.get_container_client(settings.AZURE_STORAGE_CONTAINER)
+        blob = container.get_blob_client(blob_name)
+        await blob.stage_block(block_id=block_id, data=data, length=len(data))
+
+
+async def commit_block_list(
+    blob_name: str,
+    block_ids: list[str],
+    content_type: str = "application/octet-stream",
+) -> None:
+    """Commit staged blocks as a single blob.
+
+    Args:
+        blob_name: Destination blob name.
+        block_ids: Ordered list of block IDs to commit.
+        content_type: MIME type for the blob.
+    """
+    from azure.storage.blob import ContentSettings
+
+    async with _async_service_client() as service:
+        container = service.get_container_client(settings.AZURE_STORAGE_CONTAINER)
+        blob = container.get_blob_client(blob_name)
+        await blob.commit_block_list(block_ids)
+        await blob.set_http_headers(
+            content_settings=ContentSettings(content_type=content_type)
+        )
+
+
+async def get_blob_properties(blob_name: str) -> dict:
+    """Get blob properties including size and content type.
+
+    Args:
+        blob_name: Name of the blob.
+
+    Returns:
+        Dict with ``size``, ``content_type``, and ``etag``.
+    """
+    async with _async_service_client() as service:
+        container = service.get_container_client(settings.AZURE_STORAGE_CONTAINER)
+        blob = container.get_blob_client(blob_name)
+        props = await blob.get_blob_properties()
+        return {
+            "size": props.size,
+            "content_type": props.content_settings.content_type,
+            "etag": props.etag,
+        }
+
+
+async def delete_blob(blob_name: str) -> None:
+    """Delete a blob from the container.
+
+    Args:
+        blob_name: Name of the blob to delete.
+    """
+    async with _async_service_client() as service:
+        container = service.get_container_client(settings.AZURE_STORAGE_CONTAINER)
+        blob = container.get_blob_client(blob_name)
+        await blob.delete_blob()
 
 
 async def move_to_cool_tier(blob_name: str) -> None:

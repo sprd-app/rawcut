@@ -44,36 +44,59 @@ final class UploadManager: NSObject, Sendable {
     // Continuation for background events completion handler
     private let backgroundCompletionStore = BackgroundCompletionStore()
 
-    private let session: URLSession
+    private nonisolated(unsafe) var session: URLSession
 
-    private let authManager: AuthManager
+    let authManagerRef: AuthManager
+    private var authManager: AuthManager { authManagerRef }
     private let baseURL: URL
 
-    init(authManager: AuthManager, baseURL: URL = URL(string: "https://rawcut-api.wittygrass-ccc95e2e.koreacentral.azurecontainerapps.io")!) {
-        self.authManager = authManager
+    /// Called on each progress update. Observers can use this for real-time UI updates.
+    nonisolated(unsafe) var onProgressUpdate: ((_ assetID: String, _ bytesSent: Int64, _ totalBytes: Int64) -> Void)?
+
+    init(authManager: AuthManager, baseURL: URL = URL(string: APIClient.baseURL)!) {
+        self.authManagerRef = authManager
         self.baseURL = baseURL
 
+        #if DEBUG
+        // Use default session for simulator (background session requires HTTPS)
+        let config = URLSessionConfiguration.default
+        #else
         let config = URLSessionConfiguration.background(withIdentifier: Self.sessionIdentifier)
         config.isDiscretionary = false
         config.sessionSendsLaunchEvents = true
         config.allowsCellularAccess = true
+        #endif
 
-        let tempSession = URLSession(configuration: config)
-        self.session = tempSession
-        self.backgroundSession = tempSession
+        // Placeholder — will be replaced after super.init()
+        let placeholder = URLSession(configuration: config)
+        self.session = placeholder
+        self.backgroundSession = placeholder
 
         super.init()
 
-        // Re-create session with delegate now that self is initialized
+        // Re-create session WITH delegate (self is now initialized)
+        #if DEBUG
+        let delegateConfig = URLSessionConfiguration.default
+        #else
         let delegateConfig = URLSessionConfiguration.background(withIdentifier: Self.sessionIdentifier)
         delegateConfig.isDiscretionary = false
         delegateConfig.sessionSendsLaunchEvents = true
         delegateConfig.allowsCellularAccess = true
+        #endif
+
+        let realSession = URLSession(
+            configuration: delegateConfig,
+            delegate: self,
+            delegateQueue: nil
+        )
+        self.session = realSession
+        self.backgroundSession = realSession
+        placeholder.invalidateAndCancel()
     }
 
     // MARK: - Session (nonisolated for Sendable)
 
-    private let backgroundSession: URLSession
+    private nonisolated(unsafe) var backgroundSession: URLSession
 
     private static func createBackgroundSession(delegate: UploadManager) -> URLSession {
         let config = URLSessionConfiguration.background(withIdentifier: sessionIdentifier)
@@ -99,16 +122,46 @@ final class UploadManager: NSObject, Sendable {
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+
+        // Set proper content type and filename based on media type
+        let contentType: String
+        let filename: String
+        switch asset.mediaType {
+        case .video:
+            contentType = "video/mp4"
+            filename = "\(asset.localIdentifier.prefix(8)).mp4"
+        case .photo, .livePhoto:
+            contentType = "image/jpeg"
+            filename = "\(asset.localIdentifier.prefix(8)).jpg"
+        }
+
+        request.setValue(contentType, forHTTPHeaderField: "Content-Type")
+        request.setValue(filename, forHTTPHeaderField: "X-Filename")
         request.setValue(asset.localIdentifier, forHTTPHeaderField: "X-Local-Identifier")
         request.setValue(asset.mediaTypeRaw, forHTTPHeaderField: "X-Media-Type")
         request.setValue("\(asset.fileSize)", forHTTPHeaderField: "X-File-Size")
+        if let hash = asset.contentHash {
+            request.setValue(hash, forHTTPHeaderField: "X-Content-Hash")
+        }
 
         let uploadState = UploadState(assetIdentifier: asset.localIdentifier)
         await activeUploads.set(asset.localIdentifier, state: uploadState)
 
         let localId = asset.localIdentifier
         let fileSize = asset.fileSize
+
+        #if DEBUG
+        // Use simple URLSession.upload for simulator (no background session needed)
+        print("[Rawcut] Upload started: \(localId) (\(fileSize) bytes)")
+        let (data, response) = try await URLSession.shared.upload(for: request, fromFile: fileURL)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw UploadError.serverError(statusCode: (response as? HTTPURLResponse)?.statusCode ?? 0, message: "Upload failed")
+        }
+        struct UploadResponse: Decodable { let blob_name: String; let size: Int }
+        let result = try JSONDecoder().decode(UploadResponse.self, from: data)
+        print("[Rawcut] Upload complete: \(localId) -> \(result.blob_name)")
+        return UploadResult(cloudBlobName: result.blob_name, bytesUploaded: Int64(result.size))
+        #else
         let uploads = activeUploads
         let session = backgroundSession
 
@@ -123,6 +176,7 @@ final class UploadManager: NSObject, Sendable {
             task.resume()
             print("[Rawcut] Upload started: \(localId) (\(fileSize) bytes)")
         }
+        #endif
     }
 
     // MARK: - Background Events
@@ -159,7 +213,10 @@ extension UploadManager: URLSessionTaskDelegate, URLSessionDataDelegate {
         Task {
             await activeUploads.updateProgress(assetID, progress: progress, bytesSent: totalBytesSent)
         }
-        print("[Rawcut] Upload progress \(assetID): \(Int(progress * 100))%")
+        onProgressUpdate?(assetID, totalBytesSent, totalBytesExpectedToSend)
+        if Int(progress * 100) % 10 == 0 {
+            print("[Rawcut] Upload progress \(assetID): \(Int(progress * 100))%")
+        }
     }
 
     func urlSession(

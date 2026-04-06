@@ -12,8 +12,8 @@ struct EmptyStateView: View {
     var body: some View {
         VStack(spacing: Spacing.lg) {
             Image(systemName: icon)
-                .font(.system(size: 64, weight: .ultraLight))
-                .foregroundStyle(Color.rcTextTertiary)
+                .font(.system(size: 48, weight: .thin))
+                .foregroundStyle(Color.rcTextSecondary)
                 .accessibilityHidden(true)
 
             Text(title)
@@ -35,7 +35,7 @@ struct EmptyStateView: View {
                         .foregroundStyle(.black)
                         .padding(.horizontal, Spacing.xl)
                         .padding(.vertical, Spacing.md)
-                        .background(Color.rcAccent, in: Capsule())
+                        .background(Color.rcAccent, in: RoundedRectangle(cornerRadius: 10))
                 }
                 .accessibilityLabel(actionTitle)
             }

@@ -33,6 +33,7 @@ class TagResponse(BaseModel):
     energy_level: float | None = None
     emotion: str | None = None
     description: str | None = None
+    tags: list[str] = []
     tagged_at: str | None = None
 
 
@@ -58,6 +59,8 @@ async def _save_tags(db: aiosqlite.Connection, asset_id: str, tags: AssetTags) -
             energy_level = ?,
             emotion = ?,
             description = ?,
+            tags = ?,
+            transcript = ?,
             tagged_at = ?
         WHERE id = ?
         """,
@@ -67,6 +70,8 @@ async def _save_tags(db: aiosqlite.Connection, asset_id: str, tags: AssetTags) -
             tags.energy_level,
             tags.emotion.value,
             tags.description,
+            json.dumps(tags.tags),
+            tags.transcript,
             datetime.utcnow().isoformat(),
             asset_id,
         ),
@@ -216,7 +221,7 @@ async def get_asset_tags(
     async with db.execute(
         """
         SELECT id, content_type, quality_score, energy_level,
-               emotion, description, tagged_at
+               emotion, description, tags, tagged_at
         FROM media_assets
         WHERE id = ? AND user_id = ?
         """,
@@ -227,6 +232,8 @@ async def get_asset_tags(
     if not row:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
 
+    tags_list = json.loads(row[6]) if row[6] else []
+
     return TagResponse(
         asset_id=row[0],
         content_type=row[1],
@@ -234,5 +241,49 @@ async def get_asset_tags(
         energy_level=row[3],
         emotion=row[4],
         description=row[5],
-        tagged_at=row[6],
+        tags=tags_list,
+        tagged_at=row[7],
+    )
+
+
+class BlobTagsResponse(BaseModel):
+    """Tags for a media asset looked up by blob_name."""
+    blob_name: str
+    tags: list[str] = []
+    content_type: str | None = None
+    description: str | None = None
+    tagged_at: str | None = None
+
+
+@router.get("/by-blob/{blob_name:path}", response_model=BlobTagsResponse)
+async def get_tags_by_blob(
+    blob_name: str,
+    request: Request,
+    db: aiosqlite.Connection = Depends(get_db),
+) -> BlobTagsResponse:
+    """Get tags for an asset by blob_name. Used by iOS to sync tags after upload."""
+    user_id: str = getattr(request.state, "user_id", "anonymous")
+
+    async with db.execute(
+        """
+        SELECT blob_name, tags, content_type, description, tagged_at
+        FROM media_assets
+        WHERE blob_name = ? AND user_id = ?
+        """,
+        (blob_name, user_id),
+    ) as cursor:
+        row = await cursor.fetchone()
+
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
+
+    import json
+    tags_list = json.loads(row[1]) if row[1] else []
+
+    return BlobTagsResponse(
+        blob_name=row[0],
+        tags=tags_list,
+        content_type=row[2],
+        description=row[3],
+        tagged_at=row[4],
     )

@@ -97,13 +97,14 @@ struct CreateView: View {
         }
     }
 
+    @ViewBuilder
     private func assetCell(_ asset: MediaAsset) -> some View {
-        let isSelected = selectedIDs.contains(asset.localIdentifier)
+        let id = asset.localIdentifier
 
-        return ZStack(alignment: .topTrailing) {
+        ZStack(alignment: .topTrailing) {
             AssetThumbnailView(asset: asset)
 
-            if isSelected {
+            if selectedIDs.contains(id) {
                 ZStack {
                     Circle()
                         .fill(Color.rcAccent)
@@ -120,11 +121,12 @@ struct CreateView: View {
                     .padding(6)
             }
         }
+        .contentShape(Rectangle())
         .onTapGesture {
-            if isSelected {
-                selectedIDs.remove(asset.localIdentifier)
+            if selectedIDs.contains(id) {
+                selectedIDs.remove(id)
             } else {
-                selectedIDs.insert(asset.localIdentifier)
+                selectedIDs.insert(id)
             }
         }
     }

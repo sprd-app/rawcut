@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     # AI
     OPENAI_API_KEY: str = ""
     ANTHROPIC_API_KEY: str = ""
+    GEMINI_API_KEY: str = ""
 
     # Apple Sign-In
     APPLE_TEAM_ID: str = ""
