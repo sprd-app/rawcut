@@ -112,19 +112,30 @@ final class PhotoLibraryObserver: NSObject, ObservableObject {
             validIdentifiers.insert(phAsset.localIdentifier)
         }
 
-        // Remove orphan assets (in SwiftData but no longer in Photos library)
+        // Handle orphan assets (in SwiftData but no longer in Photos library)
+        // Cloud-backed assets are kept as cloud-only; unsynced orphans are deleted.
         let allDescriptor = FetchDescriptor<MediaAsset>()
         var orphanCount = 0
+        var cloudOnlyCount = 0
         if let allAssets = try? context.fetch(allDescriptor) {
             for asset in allAssets {
                 if !validIdentifiers.contains(asset.localIdentifier) {
-                    context.delete(asset)
-                    orphanCount += 1
+                    if asset.cloudBlobName != nil {
+                        // Has cloud backup — keep as cloud-only
+                        if asset.syncStatus != .cloudOnly {
+                            asset.syncStatus = .cloudOnly
+                            cloudOnlyCount += 1
+                        }
+                    } else {
+                        // Never uploaded — safe to delete
+                        context.delete(asset)
+                        orphanCount += 1
+                    }
                 }
             }
         }
-        if orphanCount > 0 {
-            print("[Rawcut] Cleaned up \(orphanCount) orphan assets")
+        if orphanCount > 0 || cloudOnlyCount > 0 {
+            print("[Rawcut] Cleaned up \(orphanCount) orphans, marked \(cloudOnlyCount) as cloud-only")
         }
 
         // Insert new assets
@@ -176,6 +187,7 @@ final class PhotoLibraryObserver: NSObject, ObservableObject {
     }
 
     /// Insert a PHAsset into SwiftData if it doesn't already exist. Returns true if inserted.
+    /// Also checks for recently-restored cloud assets (same file re-downloaded with new localIdentifier).
     @discardableResult
     private func insertIfNew(phAsset: PHAsset, context: ModelContext) -> Bool {
         let identifier = phAsset.localIdentifier
@@ -190,12 +202,27 @@ final class PhotoLibraryObserver: NSObject, ObservableObject {
             return false
         }
 
-        // Estimate file size from PHAsset resource
-        let resources = PHAssetResource.assetResources(for: phAsset)
-        let primaryResource = resources.first
-        let fileSize = primaryResource.flatMap { resource in
-            resource.value(forKey: "fileSize") as? Int64
-        } ?? 0
+        // Check if this is a restored cloud asset (downloaded back with a new localIdentifier).
+        // Match by file size + creation date (within 1 second) against .cloudOnly records.
+        let fileSize = PHAssetResource.assetResources(for: phAsset).first
+            .flatMap { $0.value(forKey: "fileSize") as? Int64 } ?? 0
+        if fileSize > 0, let createdDate = phAsset.creationDate {
+            let cloudOnlyPredicate = #Predicate<MediaAsset> { $0.syncStatusRaw == "cloudOnly" }
+            if let cloudAssets = try? context.fetch(FetchDescriptor<MediaAsset>(predicate: cloudOnlyPredicate)) {
+                for candidate in cloudAssets {
+                    let sameSize = candidate.fileSize == fileSize
+                    let sameDate = abs(candidate.createdDate.timeIntervalSince(createdDate)) < 2
+                    if sameSize && sameDate {
+                        // This is a restored asset — update its localIdentifier instead of creating new
+                        candidate.localIdentifier = identifier
+                        candidate.syncStatus = .synced
+                        candidate.cachedThumbnail = nil
+                        print("[Rawcut] Restored cloud asset: \(identifier) (was \(candidate.cloudBlobName ?? "?"))")
+                        return false // don't insert new, we updated existing
+                    }
+                }
+            }
+        }
 
         let asset = MediaAsset(
             localIdentifier: phAsset.localIdentifier,
@@ -259,7 +286,7 @@ extension PhotoLibraryObserver: PHPhotoLibraryChangeObserver {
             }
         }
 
-        // Process removed assets
+        // Process removed assets — keep cloud copies, only delete unsynced
         if let removedObjects = changes.removedObjects as? [PHAsset], !removedObjects.isEmpty {
             for phAsset in removedObjects {
                 let identifier = phAsset.localIdentifier
@@ -267,7 +294,14 @@ extension PhotoLibraryObserver: PHPhotoLibraryChangeObserver {
                 let descriptor = FetchDescriptor<MediaAsset>(predicate: predicate)
 
                 if let existing = try? context.fetch(descriptor).first {
-                    context.delete(existing)
+                    if existing.cloudBlobName != nil {
+                        // Asset is in cloud — keep record, mark as cloud-only
+                        existing.syncStatus = .cloudOnly
+                        print("[Rawcut] Asset \(identifier) removed from Photos, kept as cloud-only")
+                    } else {
+                        // Never uploaded — safe to delete
+                        context.delete(existing)
+                    }
                 }
             }
         }

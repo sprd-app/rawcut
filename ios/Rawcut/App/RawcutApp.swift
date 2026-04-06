@@ -10,6 +10,8 @@ struct RawcutApp: App {
     @StateObject private var photoObserver: PhotoLibraryObserver
     @StateObject private var networkMonitor: NetworkMonitor
     @StateObject private var authManager: AuthManager
+    @StateObject private var downloadManager: DownloadManager
+    @StateObject private var storageManager: StorageManager
 
     var sharedModelContainer: ModelContainer = {
         LocalStore.shared.container
@@ -30,10 +32,15 @@ struct RawcutApp: App {
             syncEngine: engine
         )
 
+        let download = DownloadManager(authManager: auth)
+        let storage = StorageManager(modelContainer: container)
+
         _syncEngine = StateObject(wrappedValue: engine)
         _photoObserver = StateObject(wrappedValue: observer)
         _networkMonitor = StateObject(wrappedValue: network)
         _authManager = StateObject(wrappedValue: auth)
+        _downloadManager = StateObject(wrappedValue: download)
+        _storageManager = StateObject(wrappedValue: storage)
     }
 
     var body: some Scene {
@@ -43,10 +50,14 @@ struct RawcutApp: App {
                 .environmentObject(photoObserver)
                 .environmentObject(networkMonitor)
                 .environmentObject(authManager)
+                .environmentObject(downloadManager)
+                .environmentObject(storageManager)
                 .preferredColorScheme(.dark)
                 .task {
-                    // Wire SyncEngine to AppDelegate for background task handling
+                    // Wire services to AppDelegate for background task handling
                     appDelegate.syncEngine = syncEngine
+                    appDelegate.uploadManager = syncEngine.uploadManagerRef
+                    syncEngine.setStorageManager(storageManager)
                     // NetworkMonitor starts automatically in init()
                     // Check current photo authorization (don't auto-request, let UI handle it)
                     photoObserver.refreshAuthorizationStatus()
@@ -63,6 +74,9 @@ struct RawcutApp: App {
                     }
                     // If .notDetermined or .denied, MediaHubView shows the "Grant Access" button
                     // which calls photoObserver.requestAuthorization()
+
+                    // Auto-optimize storage on launch if needed
+                    await storageManager.autoOptimizeIfNeeded()
                 }
         }
         .modelContainer(sharedModelContainer)

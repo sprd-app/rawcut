@@ -34,6 +34,12 @@ final class MediaAsset {
     /// Duration in seconds (0 for photos)
     var durationSeconds: Double
 
+    /// SHA256 hash of the file content (for dedup)
+    var contentHash: String?
+
+    /// Cached thumbnail file name (relative to app's thumbnail cache dir)
+    var cachedThumbnail: String?
+
     // MARK: - Computed accessors
 
     var syncStatus: SyncStatus {
@@ -54,7 +60,9 @@ final class MediaAsset {
         mediaType: MediaType,
         createdDate: Date = .now,
         tags: [String]? = nil,
-        durationSeconds: Double = 0
+        durationSeconds: Double = 0,
+        contentHash: String? = nil,
+        cachedThumbnail: String? = nil
     ) {
         self.localIdentifier = localIdentifier
         self.cloudBlobName = cloudBlobName
@@ -64,5 +72,7 @@ final class MediaAsset {
         self.createdDate = createdDate
         self.tags = tags
         self.durationSeconds = durationSeconds
+        self.contentHash = contentHash
+        self.cachedThumbnail = cachedThumbnail
     }
 }

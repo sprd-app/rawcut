@@ -71,8 +71,17 @@ class ContentType(StrEnum):
     SCREEN_RECORDING = "screen_recording"
     WHITEBOARD = "whiteboard"
     OUTDOOR_WALK = "outdoor_walk"
+    OUTDOOR_ACTIVITY = "outdoor_activity"
     PRODUCT_DEMO = "product_demo"
     MEETING = "meeting"
+    FOOD = "food"
+    TRAVEL = "travel"
+    SELFIE = "selfie"
+    PORTRAIT = "portrait"
+    LANDSCAPE = "landscape"
+    PET = "pet"
+    EVENT = "event"
+    WORKOUT = "workout"
     B_ROLL_GENERIC = "b_roll_generic"
 
 
@@ -82,6 +91,10 @@ class Emotion(StrEnum):
     FOCUSED = "focused"
     REFLECTIVE = "reflective"
     CASUAL = "casual"
+    HAPPY = "happy"
+    SAD = "sad"
+    INTENSE = "intense"
+    PEACEFUL = "peaceful"
 
 
 class AssetTags(BaseModel):
@@ -91,7 +104,9 @@ class AssetTags(BaseModel):
     quality_score: float = Field(ge=0.0, le=1.0)
     energy_level: float = Field(ge=0.0, le=1.0)
     emotion: Emotion
-    description: str = Field(max_length=200)
+    description: str = Field(max_length=500)
+    tags: list[str] = Field(default_factory=list)
+    transcript: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -149,13 +164,22 @@ def _encode_image(image_bytes: bytes) -> str:
 # GPT-5.4 Vision analysis
 # ---------------------------------------------------------------------------
 
-_SYSTEM_PROMPT = """You are a media asset tagger for a creator's video editing tool.
-Analyze the provided image(s) and return a JSON object with exactly these fields:
-- content_type: one of talking_head, screen_recording, whiteboard, outdoor_walk, product_demo, meeting, b_roll_generic
-- quality_score: 0.0 to 1.0 (technical quality: sharpness, lighting, framing)
-- energy_level: 0.0 to 1.0 (pacing, motion, visual intensity)
-- emotion: one of neutral, excited, focused, reflective, casual
-- description: one-line description (max 200 chars)
+_SYSTEM_PROMPT = """You are a media asset tagger for a vlog editing tool. Your description is CRITICAL — the editing AI uses it to decide which clips to use and where.
+
+Analyze the provided image(s) and return a JSON object with these fields:
+
+- content_type: one of talking_head, screen_recording, whiteboard, outdoor_walk, outdoor_activity, product_demo, meeting, food, travel, selfie, portrait, landscape, pet, event, workout, b_roll_generic
+- quality_score: 0.0 to 1.0 (sharpness, lighting, framing, stability)
+- energy_level: 0.0 to 1.0 (motion, pacing, visual intensity)
+- emotion: one of neutral, excited, focused, reflective, casual, happy, sad, intense, peaceful
+- description: DETAILED description (max 500 chars). Include:
+  - WHO: people visible (age, gender, count, what they're doing)
+  - WHERE: location/setting (indoor/outdoor, specific place if recognizable)
+  - WHAT: main action or subject
+  - MOOD: visual mood, lighting, colors
+  - NOTABLE: any text on screen, products, animals, food, landmarks
+  Example: "Young man in his 20s talking to camera in a bright office, wearing a black hoodie, whiteboard with diagrams behind him, natural window light from left, energetic hand gestures, appears to be explaining a tech concept"
+
 Return ONLY valid JSON, no markdown fences."""
 
 
@@ -229,6 +253,51 @@ async def _call_vision_api(
 # ---------------------------------------------------------------------------
 
 
+async def _transcribe_audio(blob_url: str) -> str | None:
+    """Transcribe audio from a video using OpenAI Whisper API."""
+    try:
+        client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        if not settings.OPENAI_API_KEY:
+            return None
+
+        # Download audio via ffmpeg (extract to temp mp3)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            audio_path = Path(tmpdir) / "audio.mp3"
+            proc = await asyncio.create_subprocess_exec(
+                "ffmpeg", "-i", blob_url,
+                "-vn", "-acodec", "libmp3lame", "-q:a", "4",
+                "-t", "120",  # max 2 min
+                str(audio_path),
+                "-y", "-loglevel", "error",
+                stdout=subprocess.DEVNULL,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            _, stderr = await proc.communicate()
+            if proc.returncode != 0 or not audio_path.exists():
+                logger.warning("Audio extraction failed: %s", stderr.decode()[:200])
+                return None
+
+            if audio_path.stat().st_size < 1000:
+                return None  # Too small, probably no audio
+
+            # Call Whisper
+            with open(audio_path, "rb") as f:
+                result = await client.audio.transcriptions.create(
+                    model="whisper-1",
+                    file=f,
+                    response_format="text",
+                    language="en",
+                )
+            transcript = result.strip() if isinstance(result, str) else str(result).strip()
+            if transcript:
+                logger.info("Transcribed: %s", transcript[:100])
+            return transcript if transcript else None
+
+    except Exception as e:
+        logger.warning("Transcription failed: %s", e)
+        return None
+
+
 async def analyze_asset(blob_name: str, blob_url: str) -> AssetTags | None:
     """Analyze a single media asset and return structured tags.
 
@@ -261,7 +330,18 @@ async def analyze_asset(blob_name: str, blob_url: str) -> AssetTags | None:
         logger.info("Unsupported extension '%s' for tagging, skipping %s", extension, blob_name)
         return None
 
-    return await _call_vision_api(frames, _batch_tracker)
+    # Run vision analysis + audio transcription in parallel
+    tags_task = _call_vision_api(frames, _batch_tracker)
+
+    transcript = None
+    video_extensions = {"mp4", "mov", "avi", "mkv", "webm", "m4v"}
+    if extension in video_extensions:
+        transcript = await _transcribe_audio(blob_url)
+
+    tags = await tags_task
+    if tags and transcript:
+        tags.transcript = transcript
+    return tags
 
 
 async def analyze_batch(

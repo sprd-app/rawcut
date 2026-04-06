@@ -121,6 +121,10 @@ struct AssetThumbnailView: View {
                 syncIcon(systemName: "exclamationmark", color: Color.rcError)
             }
             .accessibilityLabel("Upload failed, tap to retry")
+
+        case .cloudOnly:
+            syncIcon(systemName: "icloud", color: Color.rcAccent)
+                .accessibilityLabel("cloud only")
         }
     }
 
@@ -135,29 +139,37 @@ struct AssetThumbnailView: View {
     // MARK: - Thumbnail Loading
 
     private func loadThumbnail() {
+        // Try loading from Photos library first
         let fetchResult = PHAsset.fetchAssets(
             withLocalIdentifiers: [asset.localIdentifier],
             options: nil
         )
-        guard let phAsset = fetchResult.firstObject else { return }
 
-        let size = CGSize(width: 300, height: 300)
-        let options = PHImageRequestOptions()
-        options.deliveryMode = .opportunistic
-        options.isNetworkAccessAllowed = true
-        options.isSynchronous = false
+        if let phAsset = fetchResult.firstObject {
+            let size = CGSize(width: 300, height: 300)
+            let options = PHImageRequestOptions()
+            options.deliveryMode = .opportunistic
+            options.isNetworkAccessAllowed = true
+            options.isSynchronous = false
 
-        Self.imageManager.requestImage(
-            for: phAsset,
-            targetSize: size,
-            contentMode: .aspectFill,
-            options: options
-        ) { image, _ in
-            Task { @MainActor in
-                if let image {
-                    self.thumbnail = image
+            Self.imageManager.requestImage(
+                for: phAsset,
+                targetSize: size,
+                contentMode: .aspectFill,
+                options: options
+            ) { image, _ in
+                Task { @MainActor in
+                    if let image {
+                        self.thumbnail = image
+                    }
                 }
             }
+            return
+        }
+
+        // Fallback: load cached thumbnail for cloud-only assets
+        if let cached = StorageManager.loadCachedThumbnail(fileName: asset.cachedThumbnail) {
+            thumbnail = cached
         }
     }
 
@@ -178,6 +190,7 @@ struct AssetThumbnailView: View {
         case .uploading: status = "uploading"
         case .pending: status = "pending"
         case .failed: status = "upload failed"
+        case .cloudOnly: status = "cloud only"
         }
         return "\(type), \(status)"
     }

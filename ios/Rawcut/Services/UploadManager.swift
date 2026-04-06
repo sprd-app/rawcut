@@ -44,13 +44,14 @@ final class UploadManager: NSObject, Sendable {
     // Continuation for background events completion handler
     private let backgroundCompletionStore = BackgroundCompletionStore()
 
-    private let session: URLSession
+    private nonisolated(unsafe) var session: URLSession
 
-    private let authManager: AuthManager
+    let authManagerRef: AuthManager
+    private var authManager: AuthManager { authManagerRef }
     private let baseURL: URL
 
     init(authManager: AuthManager, baseURL: URL = URL(string: APIClient.baseURL)!) {
-        self.authManager = authManager
+        self.authManagerRef = authManager
         self.baseURL = baseURL
 
         #if DEBUG
@@ -63,13 +64,14 @@ final class UploadManager: NSObject, Sendable {
         config.allowsCellularAccess = true
         #endif
 
-        let tempSession = URLSession(configuration: config)
-        self.session = tempSession
-        self.backgroundSession = tempSession
+        // Placeholder — will be replaced after super.init()
+        let placeholder = URLSession(configuration: config)
+        self.session = placeholder
+        self.backgroundSession = placeholder
 
         super.init()
 
-        // Re-create session with delegate now that self is initialized
+        // Re-create session WITH delegate (self is now initialized)
         #if DEBUG
         let delegateConfig = URLSessionConfiguration.default
         #else
@@ -78,11 +80,20 @@ final class UploadManager: NSObject, Sendable {
         delegateConfig.sessionSendsLaunchEvents = true
         delegateConfig.allowsCellularAccess = true
         #endif
+
+        let realSession = URLSession(
+            configuration: delegateConfig,
+            delegate: self,
+            delegateQueue: nil
+        )
+        self.session = realSession
+        self.backgroundSession = realSession
+        placeholder.invalidateAndCancel()
     }
 
     // MARK: - Session (nonisolated for Sendable)
 
-    private let backgroundSession: URLSession
+    private nonisolated(unsafe) var backgroundSession: URLSession
 
     private static func createBackgroundSession(delegate: UploadManager) -> URLSession {
         let config = URLSessionConfiguration.background(withIdentifier: sessionIdentifier)

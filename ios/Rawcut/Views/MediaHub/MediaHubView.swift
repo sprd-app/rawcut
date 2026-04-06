@@ -7,8 +7,10 @@ struct MediaHubView: View {
 
     @EnvironmentObject private var syncEngine: SyncEngine
     @EnvironmentObject private var photoObserver: PhotoLibraryObserver
+    @EnvironmentObject private var downloadManager: DownloadManager
 
     @State private var selectedViewMode: ViewMode = .grid
+    @State private var assetToDownload: MediaAsset?
 
     enum ViewMode: String, CaseIterable {
         case grid = "Grid"
@@ -100,7 +102,17 @@ struct MediaHubView: View {
         ScrollView {
             LazyVGrid(columns: columns, spacing: 2) {
                 ForEach(assets) { asset in
-                    AssetThumbnailView(asset: asset)
+                    AssetThumbnailView(
+                        asset: asset,
+                        onRetry: asset.syncStatus == .failed ? {
+                            syncEngine.retryFailed()
+                        } : nil
+                    )
+                    .onTapGesture {
+                        if asset.syncStatus == .cloudOnly {
+                            assetToDownload = asset
+                        }
+                    }
                 }
             }
             .padding(.horizontal, 2)
@@ -108,6 +120,35 @@ struct MediaHubView: View {
         .refreshable {
             syncEngine.startSync()
             try? await Task.sleep(for: .seconds(1))
+        }
+        .sheet(item: $assetToDownload) { asset in
+            CloudAssetDownloadSheet(
+                asset: asset,
+                downloadManager: downloadManager,
+                onDownloaded: { newLocalId in
+                    // Update asset: restore to .synced AND update localIdentifier
+                    // to match the new PHAsset (Photos gives a new ID when re-saving)
+                    let context = ModelContext(syncEngine.modelContainerRef)
+                    let oldIdentifier = asset.localIdentifier
+                    let predicate = #Predicate<MediaAsset> { $0.localIdentifier == oldIdentifier }
+                    do {
+                        if let dbAsset = try context.fetch(FetchDescriptor<MediaAsset>(predicate: predicate)).first {
+                            if let newId = newLocalId {
+                                dbAsset.localIdentifier = newId
+                            }
+                            dbAsset.syncStatus = .synced
+                            dbAsset.cachedThumbnail = nil // no longer needed
+                            try context.save()
+                        }
+                    } catch {
+                        print("[Rawcut] Failed to restore asset: \(error.localizedDescription)")
+                    }
+                    syncEngine.refreshProgress()
+                    assetToDownload = nil
+                }
+            )
+            .presentationDetents([.medium])
+            .presentationDragIndicator(.visible)
         }
     }
 }

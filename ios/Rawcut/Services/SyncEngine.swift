@@ -2,6 +2,8 @@ import Foundation
 import SwiftData
 import BackgroundTasks
 import Photos
+import CryptoKit
+import UserNotifications
 
 // MARK: - Sync Progress
 
@@ -37,15 +39,38 @@ final class SyncEngine: ObservableObject {
 
     // MARK: - Dependencies
 
-    private let uploadManager: UploadManager
+    let uploadManagerRef: UploadManager
+    let modelContainerRef: ModelContainer
+    private var uploadManager: UploadManager { uploadManagerRef }
     private let networkMonitor: NetworkMonitor
-    private let modelContainer: ModelContainer
+    private var modelContainer: ModelContainer { modelContainerRef }
+    private weak var storageManager: StorageManager?
 
     // MARK: - Configuration
 
     private let maxRetries = 3
     private var currentTask: Task<Void, Never>?
     private var isPaused: Bool = false
+
+    /// Reads user preference for Wi-Fi-only sync.
+    /// Default matches @AppStorage("syncOnWiFiOnly") = true in SettingsView.
+    private var syncOnWiFiOnly: Bool {
+        // @AppStorage defaults to true, but UserDefaults.bool returns false for unset keys.
+        // Use object(forKey:) to detect never-set state and default to true.
+        if UserDefaults.standard.object(forKey: "syncOnWiFiOnly") == nil {
+            return true
+        }
+        return UserDefaults.standard.bool(forKey: "syncOnWiFiOnly")
+    }
+
+    /// True if current network state allows syncing based on user preference
+    private var isNetworkAllowedForSync: Bool {
+        guard networkMonitor.isConnected else { return false }
+        if syncOnWiFiOnly && !networkMonitor.isWiFi {
+            return false
+        }
+        return true
+    }
 
     // MARK: - Init
 
@@ -54,31 +79,48 @@ final class SyncEngine: ObservableObject {
         networkMonitor: NetworkMonitor,
         modelContainer: ModelContainer
     ) {
-        self.uploadManager = uploadManager
+        self.uploadManagerRef = uploadManager
         self.networkMonitor = networkMonitor
-        self.modelContainer = modelContainer
+        self.modelContainerRef = modelContainer
 
         observeNetworkChanges()
+    }
+
+    func setStorageManager(_ manager: StorageManager) {
+        self.storageManager = manager
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
     }
 
     // MARK: - Public API
 
     func startSync() {
         guard !isSyncing else { return }
-        guard networkMonitor.isConnected else {
-            syncStatusMessage = "Waiting for network..."
+        guard isNetworkAllowedForSync else {
+            if !networkMonitor.isConnected {
+                syncStatusMessage = "Waiting for network..."
+            } else {
+                syncStatusMessage = "Waiting for Wi-Fi..."
+            }
             return
         }
 
         // Reset stale "uploading" assets back to pending (from previous crash/restart)
         let context = ModelContext(modelContainer)
         let uploadingPredicate = #Predicate<MediaAsset> { $0.syncStatusRaw == "uploading" }
-        if let stale = try? context.fetch(FetchDescriptor<MediaAsset>(predicate: uploadingPredicate)), !stale.isEmpty {
-            for asset in stale {
-                asset.syncStatus = .pending
+        do {
+            let stale = try context.fetch(FetchDescriptor<MediaAsset>(predicate: uploadingPredicate))
+            if !stale.isEmpty {
+                for asset in stale {
+                    asset.syncStatus = .pending
+                }
+                try context.save()
+                print("[Rawcut] Reset \(stale.count) stale uploading assets to pending")
             }
-            try? context.save()
-            print("[Rawcut] Reset \(stale.count) stale uploading assets to pending")
+        } catch {
+            print("[Rawcut] Failed to reset stale uploads: \(error.localizedDescription)")
         }
 
         isPaused = false
@@ -120,7 +162,7 @@ final class SyncEngine: ObservableObject {
 
     /// Called by AppDelegate to run sync in a background task context
     func performBackgroundSync() async {
-        guard networkMonitor.isConnected else { return }
+        guard isNetworkAllowedForSync else { return }
         isPaused = false
         await processSyncQueue()
     }
@@ -145,18 +187,26 @@ final class SyncEngine: ObservableObject {
 
     private func processSyncQueue() async {
         defer {
+            refreshProgress()
             isSyncing = false
             if syncProgress.isComplete {
                 syncStatusMessage = "All synced"
+                // Auto-optimize storage after sync completes
+                Task { await storageManager?.autoOptimizeIfNeeded() }
             }
         }
 
         while !Task.isCancelled && !isPaused {
             refreshProgress()
 
-            guard networkMonitor.isConnected else {
-                syncStatusMessage = "Waiting for network..."
-                print("[Rawcut] Network lost, pausing sync queue")
+            guard isNetworkAllowedForSync else {
+                if !networkMonitor.isConnected {
+                    syncStatusMessage = "Waiting for network..."
+                    print("[Rawcut] Network lost, pausing sync queue")
+                } else {
+                    syncStatusMessage = "Waiting for Wi-Fi..."
+                    print("[Rawcut] Cellular only, waiting for Wi-Fi (syncOnWiFiOnly enabled)")
+                }
                 return
             }
 
@@ -177,7 +227,11 @@ final class SyncEngine: ObservableObject {
         // Mark as uploading
         if let dbAsset = fetchAsset(identifier: identifier, in: context) {
             dbAsset.syncStatus = .uploading
-            try? context.save()
+            do {
+                try context.save()
+            } catch {
+                print("[Rawcut] Failed to mark \(identifier) as uploading: \(error.localizedDescription)")
+            }
         }
         refreshProgress()
         syncStatusMessage = "Uploading..."
@@ -191,6 +245,40 @@ final class SyncEngine: ObservableObject {
 
         defer {
             try? FileManager.default.removeItem(at: fileURL)
+        }
+
+        // Compute content hash for dedup
+        let hash = computeSHA256(fileURL: fileURL)
+        if let hash {
+            do {
+                // Check if another asset with same hash is already synced
+                let hashPredicate = #Predicate<MediaAsset> {
+                    $0.contentHash == hash && $0.syncStatusRaw == "synced" && $0.localIdentifier != identifier
+                }
+                let hashDescriptor = FetchDescriptor<MediaAsset>(predicate: hashPredicate)
+                if let existing = try context.fetch(hashDescriptor).first,
+                   let existingBlob = existing.cloudBlobName {
+                    // Duplicate found — skip upload, reuse blob name
+                    if let dbAsset = fetchAsset(identifier: identifier, in: context) {
+                        dbAsset.syncStatus = .synced
+                        dbAsset.cloudBlobName = existingBlob
+                        dbAsset.contentHash = hash
+                        try context.save()
+                    }
+                    refreshProgress()
+                    print("[Rawcut] Dedup: \(identifier) matches \(existing.localIdentifier), skipping upload")
+                    return
+                }
+
+                // Store hash on asset
+                if let dbAsset = fetchAsset(identifier: identifier, in: context) {
+                    dbAsset.contentHash = hash
+                    try context.save()
+                }
+            } catch {
+                print("[Rawcut] Dedup check failed for \(identifier): \(error.localizedDescription)")
+                // Continue to upload — dedup is an optimization, not critical
+            }
         }
 
         // Attempt upload with retries
@@ -219,6 +307,18 @@ final class SyncEngine: ObservableObject {
                 lastSyncedDate = .now
                 refreshProgress()
                 print("[Rawcut] Synced \(identifier)")
+
+                // Schedule tag sync (backend auto-tags in background, takes a few seconds)
+                let blobName = result.cloudBlobName
+                let container = modelContainerRef
+                Task {
+                    await Self.syncTagsForAsset(
+                        blobName: blobName,
+                        localIdentifier: identifier,
+                        modelContainer: container,
+                        authManager: uploadManager.authManagerRef
+                    )
+                }
                 return
 
             } catch {
@@ -233,23 +333,59 @@ final class SyncEngine: ObservableObject {
         // All retries exhausted
         print("[Rawcut] Upload failed after \(maxRetries) retries for \(identifier): \(lastError?.localizedDescription ?? "unknown")")
         markFailed(identifier: identifier, in: context)
+        sendUploadFailureNotification(assetId: identifier, error: lastError)
     }
 
     // MARK: - Helpers
 
     private func fetchNextPendingAsset() -> MediaAsset? {
         let context = ModelContext(modelContainer)
-        let predicate = #Predicate<MediaAsset> { $0.syncStatusRaw == "pending" }
-        var descriptor = FetchDescriptor<MediaAsset>(
-            predicate: predicate,
+
+        // Priority 1: Photos first (smaller, faster to sync)
+        let photoPredicate = #Predicate<MediaAsset> {
+            $0.syncStatusRaw == "pending" && ($0.mediaTypeRaw == "photo" || $0.mediaTypeRaw == "livePhoto")
+        }
+        var photoDescriptor = FetchDescriptor<MediaAsset>(
+            predicate: photoPredicate,
             sortBy: [SortDescriptor(\.createdDate, order: .reverse)]
         )
-        descriptor.fetchLimit = 1
+        photoDescriptor.fetchLimit = 1
 
         do {
-            return try context.fetch(descriptor).first
+            if let photo = try context.fetch(photoDescriptor).first {
+                return photo
+            }
         } catch {
-            print("[Rawcut] Failed to fetch pending assets: \(error.localizedDescription)")
+            print("[Rawcut] Failed to fetch pending photos: \(error.localizedDescription)")
+        }
+
+        // Priority 2: Videos — only on Wi-Fi, or if user allows cellular
+        let videoPredicate = #Predicate<MediaAsset> {
+            $0.syncStatusRaw == "pending" && $0.mediaTypeRaw == "video"
+        }
+        var videoDescriptor = FetchDescriptor<MediaAsset>(
+            predicate: videoPredicate,
+            sortBy: [SortDescriptor(\.createdDate, order: .reverse)]
+        )
+        videoDescriptor.fetchLimit = 1
+
+        do {
+            guard let video = try context.fetch(videoDescriptor).first else { return nil }
+
+            // Large videos (>100MB): prefer Wi-Fi + not low power mode
+            let isLargeVideo = video.fileSize > 100_000_000
+            if isLargeVideo && !networkMonitor.isWiFi {
+                print("[Rawcut] Deferring large video upload (\(video.fileSize) bytes) until Wi-Fi")
+                return nil
+            }
+            if isLargeVideo && ProcessInfo.processInfo.isLowPowerModeEnabled {
+                print("[Rawcut] Deferring large video upload in Low Power Mode")
+                return nil
+            }
+
+            return video
+        } catch {
+            print("[Rawcut] Failed to fetch pending videos: \(error.localizedDescription)")
             return nil
         }
     }
@@ -263,7 +399,11 @@ final class SyncEngine: ObservableObject {
     private func markFailed(identifier: String, in context: ModelContext) {
         if let dbAsset = fetchAsset(identifier: identifier, in: context) {
             dbAsset.syncStatus = .failed
-            try? context.save()
+            do {
+                try context.save()
+            } catch {
+                print("[Rawcut] Failed to save failed status for \(identifier): \(error.localizedDescription)")
+            }
         }
         refreshProgress()
     }
@@ -280,7 +420,7 @@ final class SyncEngine: ObservableObject {
             let allDescriptor = FetchDescriptor<MediaAsset>()
             let all = try context.fetchCount(allDescriptor)
 
-            let syncedPredicate = #Predicate<MediaAsset> { $0.syncStatusRaw == "synced" }
+            let syncedPredicate = #Predicate<MediaAsset> { $0.syncStatusRaw == "synced" || $0.syncStatusRaw == "cloudOnly" }
             let synced = try context.fetchCount(FetchDescriptor<MediaAsset>(predicate: syncedPredicate))
 
             let uploadingPredicate = #Predicate<MediaAsset> { $0.syncStatusRaw == "uploading" }
@@ -303,6 +443,46 @@ final class SyncEngine: ObservableObject {
         } catch {
             print("[Rawcut] Failed to refresh sync progress: \(error.localizedDescription)")
         }
+    }
+
+    // MARK: - Tag Sync
+
+    /// Fetch tags from backend after upload (auto-tagging runs asynchronously on server).
+    /// Retries a few times with delay since tagging may not be instant.
+    @MainActor
+    static func syncTagsForAsset(
+        blobName: String,
+        localIdentifier: String,
+        modelContainer: ModelContainer,
+        authManager: AuthManager
+    ) async {
+        guard let token = authManager.authToken else { return }
+
+        // Wait for backend auto-tagging to complete (typically 5-15s)
+        for attempt in 0..<3 {
+            try? await Task.sleep(for: .seconds(Double(attempt + 1) * 10))
+
+            guard let response = await APIClient.getTagsByBlob(blobName: blobName, authToken: token) else {
+                continue
+            }
+
+            // Only update if tags were actually generated
+            guard response.tagged_at != nil, !response.tags.isEmpty else { continue }
+
+            let context = ModelContext(modelContainer)
+            let predicate = #Predicate<MediaAsset> { $0.localIdentifier == localIdentifier }
+            do {
+                if let asset = try context.fetch(FetchDescriptor<MediaAsset>(predicate: predicate)).first {
+                    asset.tags = response.tags
+                    try context.save()
+                    print("[Rawcut] Tags synced for \(localIdentifier): \(response.tags)")
+                }
+            } catch {
+                print("[Rawcut] Failed to save synced tags: \(error.localizedDescription)")
+            }
+            return
+        }
+        print("[Rawcut] Tag sync timed out for \(localIdentifier)")
     }
 
     // MARK: - Photo Export
@@ -405,6 +585,45 @@ final class SyncEngine: ObservableObject {
         }
     }
 
+    // MARK: - Notifications
+
+    private func sendUploadFailureNotification(assetId: String, error: Error?) {
+        let content = UNMutableNotificationContent()
+        content.title = "업로드 실패"
+        content.body = "일부 미디어를 클라우드에 올리지 못했습니다. 앱을 열어 다시 시도하세요."
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: "upload-failure-\(assetId.prefix(8))",
+            content: content,
+            trigger: nil // deliver immediately
+        )
+
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error {
+                print("[Rawcut] Failed to send upload failure notification: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    // MARK: - Hashing
+
+    private nonisolated func computeSHA256(fileURL: URL) -> String? {
+        guard let handle = try? FileHandle(forReadingFrom: fileURL) else { return nil }
+        defer { handle.closeFile() }
+
+        var hasher = SHA256()
+        while autoreleasepool(invoking: {
+            let chunk = handle.readData(ofLength: 1_048_576) // 1MB chunks
+            guard !chunk.isEmpty else { return false }
+            hasher.update(data: chunk)
+            return true
+        }) {}
+
+        let digest = hasher.finalize()
+        return digest.map { String(format: "%02x", $0) }.joined()
+    }
+
     // MARK: - Network Observation
 
     private func observeNetworkChanges() {
@@ -415,6 +634,11 @@ final class SyncEngine: ObservableObject {
         ) { [weak self] _ in
             Task { @MainActor in
                 guard let self, self.isPaused == false, !self.isSyncing else { return }
+                guard self.isNetworkAllowedForSync else {
+                    print("[Rawcut] Network reconnected but Wi-Fi required")
+                    self.syncStatusMessage = "Waiting for Wi-Fi..."
+                    return
+                }
                 print("[Rawcut] Network reconnected, resuming sync")
                 self.startSync()
             }

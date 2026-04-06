@@ -58,6 +58,8 @@ enum APIClient {
         let aspect_ratio: String
         let progress: Double
         let output_blob: String?
+        let thumbnail_blob: String?
+        let segments_json: String?
         let error: String?
         let created_at: String
         let completed_at: String?
@@ -65,6 +67,24 @@ enum APIClient {
         var isComplete: Bool { status == "complete" }
         var isFailed: Bool { status == "failed" }
         var isProcessing: Bool { status == "processing" || status == "queued" }
+    }
+
+    static func getThumbnailURL(renderId: String, authToken: String) async throws -> String? {
+        guard let url = URL(string: "\(baseURL)/api/renders/\(renderId)") else { return nil }
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
+        let (data, _) = try await URLSession.shared.data(for: request)
+        let render = try JSONDecoder().decode(Render.self, from: data)
+        guard let thumbBlob = render.thumbnail_blob else { return nil }
+        // Get signed URL for thumbnail
+        guard let thumbURL = URL(string: "\(baseURL)/api/renders/\(renderId)/thumbnail") else { return nil }
+        var thumbReq = URLRequest(url: thumbURL)
+        thumbReq.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
+        let (thumbData, thumbResp) = try await URLSession.shared.data(for: thumbReq)
+        if let http = thumbResp as? HTTPURLResponse, (200...299).contains(http.statusCode) {
+            return try JSONDecoder().decode(DownloadURL.self, from: thumbData).url
+        }
+        return nil
     }
 
     struct DownloadURL: Codable, Sendable {
@@ -198,6 +218,7 @@ enum APIClient {
         projectId: String,
         preset: String = "warm_film",
         aspectRatio: String = "2.0",
+        segments: [[String: Any]]? = nil,
         authToken: String
     ) async throws -> Render {
         guard let url = URL(string: "\(baseURL)/api/projects/\(projectId)/render") else { throw URLError(.badURL) }
@@ -206,8 +227,9 @@ enum APIClient {
         request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        struct Body: Encodable { let preset: String; let aspect_ratio: String }
-        request.httpBody = try JSONEncoder().encode(Body(preset: preset, aspect_ratio: aspectRatio))
+        var body: [String: Any] = ["preset": preset, "aspect_ratio": aspectRatio]
+        if let segments { body["segments"] = segments }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await URLSession.shared.data(for: request)
         try validateResponse(response)
@@ -239,6 +261,133 @@ enum APIClient {
         let (data, response) = try await URLSession.shared.data(for: request)
         try validateResponse(response)
         return try JSONDecoder().decode([Render].self, from: data)
+    }
+
+    // MARK: - Sessions
+
+    struct ChatSession: Identifiable, Codable, Sendable {
+        let id: String
+        let title: String
+        let messages: [[String: String]]?
+        let current_script: ScriptResponse?
+        let project_id: String?
+        let created_at: String
+        let updated_at: String
+    }
+
+    struct ChatSessionListItem: Identifiable, Codable, Sendable {
+        let id: String
+        let title: String
+        let message_count: Int
+        let has_script: Bool
+        let project_id: String?
+        let created_at: String
+        let updated_at: String
+    }
+
+    static func createSession(title: String = "Untitled", authToken: String) async throws -> ChatSession {
+        guard let url = URL(string: "\(baseURL)/api/sessions") else { throw URLError(.badURL) }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        struct Body: Encodable { let title: String }
+        request.httpBody = try JSONEncoder().encode(Body(title: title))
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validateResponse(response)
+        return try JSONDecoder().decode(ChatSession.self, from: data)
+    }
+
+    static func listSessions(authToken: String) async throws -> [ChatSessionListItem] {
+        guard let url = URL(string: "\(baseURL)/api/sessions") else { throw URLError(.badURL) }
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validateResponse(response)
+        return try JSONDecoder().decode([ChatSessionListItem].self, from: data)
+    }
+
+    static func getSession(id: String, authToken: String) async throws -> ChatSession {
+        guard let url = URL(string: "\(baseURL)/api/sessions/\(id)") else { throw URLError(.badURL) }
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validateResponse(response)
+        return try JSONDecoder().decode(ChatSession.self, from: data)
+    }
+
+    static func updateSession(
+        id: String,
+        title: String? = nil,
+        messages: [[String: String]]? = nil,
+        currentScript: ScriptResponse? = nil,
+        projectId: String? = nil,
+        authToken: String
+    ) async throws {
+        guard let url = URL(string: "\(baseURL)/api/sessions/\(id)") else { throw URLError(.badURL) }
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        var body: [String: Any] = [:]
+        if let title { body["title"] = title }
+        if let messages { body["messages"] = messages }
+        if let currentScript {
+            let data = try JSONEncoder().encode(currentScript)
+            body["current_script"] = try JSONSerialization.jsonObject(with: data)
+        }
+        if let projectId { body["project_id"] = projectId }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+        try validateResponse(response)
+    }
+
+    static func deleteSession(id: String, authToken: String) async throws {
+        guard let url = URL(string: "\(baseURL)/api/sessions/\(id)") else { throw URLError(.badURL) }
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
+        let (_, response) = try await URLSession.shared.data(for: request)
+        try validateResponse(response)
+    }
+
+    // MARK: - Tags
+
+    struct BlobTagsResponse: Codable, Sendable {
+        let blob_name: String
+        let tags: [String]
+        let content_type: String?
+        let description: String?
+        let tagged_at: String?
+    }
+
+    /// Fetch tags for an asset by its blob name. Returns nil if not yet tagged.
+    static func getTagsByBlob(blobName: String, authToken: String) async -> BlobTagsResponse? {
+        let encoded = blobName.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? blobName
+        guard let url = URL(string: "\(baseURL)/api/assets/by-blob/\(encoded)") else { return nil }
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(BlobTagsResponse.self, from: data)
+    }
+
+    // MARK: - Media Download
+
+    static func getMediaDownloadURL(blobName: String, authToken: String) async throws -> String {
+        let encoded = blobName.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? blobName
+        guard let url = URL(string: "\(baseURL)/api/storage/media/\(encoded)/download") else {
+            throw URLError(.badURL)
+        }
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validateResponse(response)
+        return try JSONDecoder().decode(DownloadURL.self, from: data).url
     }
 
     // MARK: - Helpers

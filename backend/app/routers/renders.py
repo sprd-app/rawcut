@@ -27,6 +27,7 @@ class RenderRequest(BaseModel):
 
     preset: str = Field(default="warm_film", pattern=r"^(warm_film|cool_minimal|natural_vivid)$")
     aspect_ratio: str = Field(default="2.0", pattern=r"^(16:9|2\.0|2\.39)$")
+    segments: list[dict[str, Any]] | None = None  # Full script segments for AI providers
 
 
 class RenderResponse(BaseModel):
@@ -40,6 +41,8 @@ class RenderResponse(BaseModel):
     aspect_ratio: str
     progress: float
     output_blob: str | None
+    thumbnail_blob: str | None = None
+    segments_json: str | None = None
     error: str | None
     created_at: str
     completed_at: str | None
@@ -107,10 +110,13 @@ async def start_render(
     render_id = uuid.uuid4().hex
     now = datetime.now(UTC).isoformat()
 
+    import json as _json
+    segments_str = _json.dumps(body.segments) if body.segments else None
+
     await db.execute(
-        """INSERT INTO renders (id, project_id, user_id, status, preset, aspect_ratio, progress, created_at)
-           VALUES (?, ?, ?, 'queued', ?, ?, 0.0, ?)""",
-        (render_id, project_id, user_id, body.preset, body.aspect_ratio, now),
+        """INSERT INTO renders (id, project_id, user_id, status, preset, aspect_ratio, progress, segments_json, created_at)
+           VALUES (?, ?, ?, 'queued', ?, ?, 0.0, ?, ?)""",
+        (render_id, project_id, user_id, body.preset, body.aspect_ratio, segments_str, now),
     )
     await db.commit()
 
@@ -176,6 +182,28 @@ async def get_render_download(
         )
 
     url = await get_blob_url(render["output_blob"])
+    return {"url": url}
+
+
+@router.get("/renders/{render_id}/thumbnail", response_model=DownloadResponse)
+async def get_render_thumbnail(
+    render_id: str,
+    request: Request,
+    db: aiosqlite.Connection = Depends(get_db),
+) -> dict[str, str]:
+    """Get thumbnail URL for a render."""
+    user_id: str = getattr(request.state, "user_id", "anonymous")
+    cursor = await db.execute(
+        "SELECT thumbnail_blob FROM renders WHERE id = ? AND user_id = ?",
+        (render_id, user_id),
+    )
+    row = await cursor.fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Render not found")
+    thumb = dict(row).get("thumbnail_blob")
+    if not thumb:
+        raise HTTPException(status_code=404, detail="No thumbnail")
+    url = await get_blob_url(thumb)
     return {"url": url}
 
 

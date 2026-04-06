@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct ContentView: View {
+    @EnvironmentObject private var authManager: AuthManager
+
     @State private var selectedTab: Tab = .library
     @State private var isOnboardingComplete: Bool =
         UserDefaults.standard.bool(forKey: UserDefaults.Keys.hasCompletedOnboarding)
@@ -13,6 +15,21 @@ struct ContentView: View {
     }
 
     var body: some View {
+        Group {
+            if authManager.isAuthenticated {
+                authenticatedContent
+            } else {
+                SignInView()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .switchToCreateTab)) { _ in
+            selectedTab = .create
+        }
+    }
+
+    // MARK: - Authenticated Content
+
+    private var authenticatedContent: some View {
         TabView(selection: $selectedTab) {
             NavigationStack {
                 MediaHubView()
@@ -54,6 +71,13 @@ struct ContentView: View {
             OnboardingView(isOnboardingComplete: $isOnboardingComplete)
         }
     }
+}
+
+// MARK: - Notifications
+
+extension Notification.Name {
+    /// Posted from ProjectsView to switch to Create tab and resume a chat session.
+    static let switchToCreateTab = Notification.Name("com.rawcut.switchToCreateTab")
 }
 
 // MARK: - Placeholder Views

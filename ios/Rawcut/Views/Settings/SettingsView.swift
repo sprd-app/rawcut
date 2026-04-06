@@ -6,9 +6,14 @@ import SwiftData
 struct SettingsView: View {
     @EnvironmentObject private var authManager: AuthManager
     @EnvironmentObject private var syncEngine: SyncEngine
+    @EnvironmentObject private var storageManager: StorageManager
     @Query private var assets: [MediaAsset]
 
     @AppStorage("syncOnWiFiOnly") private var syncOnWiFiOnly = true
+    @AppStorage("optimizeStorage") private var optimizeStorage = true
+
+    @State private var showFreeSpaceConfirm = false
+    @State private var spaceEstimate: StorageManager.SpaceRecoveryEstimate?
 
     var body: some View {
         ZStack {
@@ -191,6 +196,81 @@ struct SettingsView: View {
             .tint(Color.rcAccent)
             .listRowBackground(Color.rcSurface)
             .accessibilityLabel("Sync on Wi-Fi only")
+
+            // Optimize Storage (like iCloud's "Optimize iPhone Storage")
+            Toggle(isOn: $optimizeStorage) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("iPhone 저장공간 최적화")
+                        .font(.rcBody)
+                        .foregroundStyle(Color.rcTextPrimary)
+                    Text("용량이 부족하면 오래된 미디어를 자동으로 정리합니다")
+                        .font(.rcCaption)
+                        .foregroundStyle(Color.rcTextSecondary)
+                }
+            }
+            .tint(Color.rcAccent)
+            .listRowBackground(Color.rcSurface)
+            .accessibilityLabel("iPhone 저장공간 최적화")
+
+            // Device free space indicator
+            HStack {
+                Text("기기 여유 공간")
+                    .font(.rcBody)
+                    .foregroundStyle(Color.rcTextPrimary)
+                Spacer()
+                Text(formattedDeviceFreeSpace)
+                    .font(.rcCaption)
+                    .foregroundStyle(storageManager.isStorageLow ? Color.rcError : Color.rcTextSecondary)
+            }
+            .listRowBackground(Color.rcSurface)
+            .onAppear { storageManager.refreshDeviceFreeSpace() }
+
+            // Free Up Space
+            Button {
+                spaceEstimate = storageManager.estimateRecoverableSpace()
+                showFreeSpaceConfirm = true
+            } label: {
+                HStack {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .foregroundStyle(Color.rcAccent)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Free Up Space")
+                            .font(.rcBody)
+                            .foregroundStyle(Color.rcTextPrimary)
+                        Text("Remove local copies of synced media")
+                            .font(.rcCaption)
+                            .foregroundStyle(Color.rcTextSecondary)
+                    }
+                    Spacer()
+                    if let count = storageManager.lastFreedCount, count > 0 {
+                        Text("\(count) freed")
+                            .font(.rcCaption)
+                            .foregroundStyle(Color.rcAccent)
+                    }
+                }
+            }
+            .listRowBackground(Color.rcSurface)
+            .confirmationDialog(
+                "Free Up Space",
+                isPresented: $showFreeSpaceConfirm,
+                titleVisibility: .visible
+            ) {
+                Button("Delete \(spaceEstimate?.assetCount ?? 0) local copies (\(spaceEstimate?.formattedSize ?? "0 bytes"))") {
+                    Task {
+                        _ = await storageManager.freeUpSpace()
+                        syncEngine.refreshProgress()
+                    }
+                }
+                Button("Only older than 30 days") {
+                    Task {
+                        _ = await storageManager.freeUpSpace(olderThan: 30)
+                        syncEngine.refreshProgress()
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Cloud copies will be kept. You can download originals anytime. \(spaceEstimate?.assetCount ?? 0) items, \(spaceEstimate?.formattedSize ?? "0 bytes") recoverable.")
+            }
         } header: {
             Text("Sync")
                 .font(.rcCaption)
@@ -243,7 +323,8 @@ struct SettingsView: View {
     }
 
     private var totalSyncedBytes: Int64 {
-        assets.filter { $0.syncStatus == .synced }.reduce(0) { $0 + $1.fileSize }
+        assets.filter { $0.syncStatus == .synced || $0.syncStatus == .cloudOnly }
+            .reduce(0) { $0 + $1.fileSize }
     }
 
     private var totalStorageGB: Double {
@@ -302,10 +383,18 @@ struct SettingsView: View {
     private var syncHealthLabel: String {
         let failedCount = assets.filter { $0.syncStatus == .failed }.count
         let uploadingCount = assets.filter { $0.syncStatus == .uploading }.count
-        let syncedCount = assets.filter { $0.syncStatus == .synced }.count
+        let syncedCount = assets.filter { $0.syncStatus == .synced || $0.syncStatus == .cloudOnly }.count
+        let cloudOnlyCount = assets.filter { $0.syncStatus == .cloudOnly }.count
         if failedCount > 0 { return "\(failedCount) failed" }
         if uploadingCount > 0 { return "\(uploadingCount) uploading" }
+        if cloudOnlyCount > 0 { return "\(syncedCount) synced (\(cloudOnlyCount) cloud-only)" }
         return "\(syncedCount) synced"
+    }
+
+    private var formattedDeviceFreeSpace: String {
+        let bytes = storageManager.deviceFreeSpace
+        if bytes <= 0 { return "—" }
+        return ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
     }
 
     private var appVersion: String {

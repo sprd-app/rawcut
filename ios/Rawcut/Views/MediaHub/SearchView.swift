@@ -185,7 +185,7 @@ struct SearchView: View {
 
     private func fetchFromBackend(query: String) async throws -> [MediaAsset] {
         guard let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-              let url = URL(string: "https://rawcut-api.wittygrass-ccc95e2e.koreacentral.azurecontainerapps.io/api/search?q=\(encoded)") else {
+              let url = URL(string: "\(APIClient.baseURL)/api/search?q=\(encoded)") else {
             throw URLError(.badURL)
         }
 
@@ -201,13 +201,38 @@ struct SearchView: View {
 
         struct BackendAsset: Decodable {
             let blob_name: String
+            let tags: String?       // JSON string from backend
+            let description: String?
+            let content_type: String?
         }
 
         let backendAssets = try JSONDecoder().decode([BackendAsset].self, from: data)
+
+        // Build blob→tags lookup and sync tags to local assets
+        var blobTagsMap: [String: [String]] = [:]
+        for ba in backendAssets {
+            var tags: [String] = []
+            if let tagsJSON = ba.tags, let parsed = try? JSONDecoder().decode([String].self, from: Data(tagsJSON.utf8)) {
+                tags = parsed
+            }
+            // Auto-generate tags from metadata if backend tags empty
+            if tags.isEmpty {
+                if let ct = ba.content_type { tags.append(ct) }
+                if let desc = ba.description { tags.append(desc) }
+            }
+            blobTagsMap[ba.blob_name] = tags
+        }
+
         let blobNames = Set(backendAssets.map { $0.blob_name })
         return allAssets.filter { asset in
             guard let blobName = asset.cloudBlobName else { return false }
-            return blobNames.contains(blobName)
+            guard blobNames.contains(blobName) else { return false }
+
+            // Sync tags from backend → local while we have them
+            if let tags = blobTagsMap[blobName], !tags.isEmpty, asset.tags != tags {
+                asset.tags = tags
+            }
+            return true
         }
     }
 

@@ -21,7 +21,9 @@ CREATE TABLE IF NOT EXISTS media_assets (
     emotion       TEXT DEFAULT NULL,
     description   TEXT DEFAULT NULL,
     tagged_at     TEXT DEFAULT NULL,
-    duration      REAL DEFAULT NULL
+    duration      REAL DEFAULT NULL,
+    transcript    TEXT DEFAULT NULL,
+    content_hash  TEXT DEFAULT NULL
 );
 
 CREATE TABLE IF NOT EXISTS projects (
@@ -64,7 +66,9 @@ CREATE TABLE IF NOT EXISTS renders (
     aspect_ratio TEXT NOT NULL DEFAULT '2.0'
                  CHECK(aspect_ratio IN ('16:9', '2.0', '2.39')),
     progress     REAL NOT NULL DEFAULT 0.0,
+    segments_json TEXT DEFAULT NULL,
     output_blob  TEXT DEFAULT NULL,
+    thumbnail_blob TEXT DEFAULT NULL,
     error        TEXT DEFAULT NULL,
     created_at   TEXT NOT NULL DEFAULT (datetime('now')),
     completed_at TEXT DEFAULT NULL
@@ -73,6 +77,19 @@ CREATE TABLE IF NOT EXISTS renders (
 CREATE INDEX IF NOT EXISTS idx_project_clips_project ON project_clips(project_id);
 CREATE INDEX IF NOT EXISTS idx_renders_project ON renders(project_id);
 CREATE INDEX IF NOT EXISTS idx_renders_user ON renders(user_id);
+
+CREATE TABLE IF NOT EXISTS chat_sessions (
+    id          TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL,
+    title       TEXT NOT NULL DEFAULT 'Untitled',
+    messages    TEXT NOT NULL DEFAULT '[]',
+    current_script TEXT DEFAULT NULL,
+    project_id  TEXT DEFAULT NULL REFERENCES projects(id) ON DELETE SET NULL,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_sessions_user ON chat_sessions(user_id);
 """
 
 
@@ -94,45 +111,58 @@ async def init_db() -> None:
         except OSError:
             pass
 
+    _migrations = [
+        "ALTER TABLE media_assets ADD COLUMN duration REAL DEFAULT NULL",
+        "ALTER TABLE projects ADD COLUMN type TEXT NOT NULL DEFAULT 'manual'",
+        "ALTER TABLE renders ADD COLUMN segments_json TEXT DEFAULT NULL",
+        "ALTER TABLE media_assets ADD COLUMN transcript TEXT DEFAULT NULL",
+        "ALTER TABLE renders ADD COLUMN thumbnail_blob TEXT DEFAULT NULL",
+        "ALTER TABLE media_assets ADD COLUMN content_hash TEXT DEFAULT NULL",
+    ]
+
+    _migration_indexes = [
+        "CREATE INDEX IF NOT EXISTS idx_projects_user_type "
+        "ON projects(user_id, type, created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_media_assets_content_hash "
+        "ON media_assets(content_hash)",
+    ]
+
     for attempt in range(5):
         try:
             async with aiosqlite.connect(db_path, timeout=10) as db:
                 await db.execute("PRAGMA journal_mode=DELETE")
                 await db.execute("PRAGMA busy_timeout=5000")
+
+                # Create tables
                 for statement in _SCHEMA.split(";"):
                     stmt = statement.strip()
                     if stmt:
                         await db.execute(stmt)
                 await db.commit()
+
+                # Run migrations (idempotent — column-already-exists is expected)
+                for stmt in _migrations:
+                    try:
+                        await db.execute(stmt)
+                        await db.commit()
+                    except Exception:
+                        pass
+
+                # Create indexes that depend on migrated columns
+                for stmt in _migration_indexes:
+                    try:
+                        await db.execute(stmt)
+                        await db.commit()
+                    except Exception:
+                        pass
+
             break  # success
-        except Exception as e:
+        except Exception:
             if attempt < 4:
                 import asyncio
                 await asyncio.sleep(2)
             else:
                 raise
-
-        # Migrate existing DBs: add columns that may not exist yet.
-        _migrations = [
-            "ALTER TABLE media_assets ADD COLUMN duration REAL DEFAULT NULL",
-            "ALTER TABLE projects ADD COLUMN type TEXT NOT NULL DEFAULT 'manual'",
-        ]
-        for stmt in _migrations:
-            try:
-                await db.execute(stmt)
-                await db.commit()
-            except Exception:
-                pass  # Column already exists
-
-        # Create indexes that depend on migrated columns
-        try:
-            await db.execute(
-                "CREATE INDEX IF NOT EXISTS idx_projects_user_type "
-                "ON projects(user_id, type, created_at)"
-            )
-            await db.commit()
-        except Exception:
-            pass
 
 
 async def get_db() -> aiosqlite.Connection:
