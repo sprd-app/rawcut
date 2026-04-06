@@ -281,9 +281,9 @@ struct ChatView: View {
     private func chatBubble(_ message: ChatMessage) -> some View {
         if message.isUser {
             // User
-            VStack(alignment: .trailing, spacing: 4) {
+            VStack(alignment: .trailing, spacing: Spacing.xs) {
                 if let attachments = message.attachments, !attachments.isEmpty {
-                    HStack(spacing: 4) {
+                    HStack(spacing: Spacing.xs) {
                         Spacer(minLength: 60)
                         ForEach(Array(attachments.prefix(4).enumerated()), id: \.offset) { _, img in
                             Image(uiImage: img)
