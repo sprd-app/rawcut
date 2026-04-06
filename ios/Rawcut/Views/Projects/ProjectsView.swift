@@ -30,17 +30,15 @@ struct ProjectsView: View {
     // MARK: - Empty
 
     private var emptyState: some View {
-        VStack(spacing: Spacing.lg) {
-            Image(systemName: "film.stack")
-                .font(.system(size: 40, weight: .ultraLight))
-                .foregroundStyle(Color.rcTextTertiary)
-            Text("No vlogs yet")
-                .font(.rcBodyMedium)
-                .foregroundStyle(Color.rcTextSecondary)
-            Text("Go to Create tab to make your first vlog")
-                .font(.rcCaption)
-                .foregroundStyle(Color.rcTextTertiary)
-        }
+        EmptyStateView(
+            icon: "film.stack",
+            title: "No Vlogs Yet",
+            description: "Go to the Create tab to make your first cinematic vlog.",
+            actionTitle: "Create a Vlog",
+            action: {
+                NotificationCenter.default.post(name: .switchToCreateTab, object: nil)
+            }
+        )
     }
 
     // MARK: - List
