@@ -35,9 +35,8 @@ struct SignInView: View {
                     request.requestedScopes = [.fullName, .email]
                 } onCompletion: { result in
                     switch result {
-                    case .success:
-                        // ASAuthorizationControllerDelegate handles the rest
-                        break
+                    case .success(let authorization):
+                        authManager.handleAuthorization(authorization)
                     case .failure(let error):
                         print("[Rawcut] Sign in cancelled: \(error.localizedDescription)")
                     }

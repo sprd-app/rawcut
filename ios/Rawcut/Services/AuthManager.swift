@@ -102,6 +102,45 @@ final class AuthManager: NSObject, ObservableObject {
         controller.performRequests()
     }
 
+    /// Called from SignInWithAppleButton's onCompletion handler.
+    /// The SwiftUI button uses its own internal delegate, so
+    /// ASAuthorizationControllerDelegate is NOT called — we must
+    /// process the credential here.
+    func handleAuthorization(_ authorization: ASAuthorization) {
+        guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential else {
+            print("[Rawcut] handleAuthorization: not an Apple ID credential")
+            return
+        }
+
+        let userID = credential.user
+        var name: String?
+        if let fullName = credential.fullName {
+            name = [fullName.givenName, fullName.familyName]
+                .compactMap { $0 }
+                .joined(separator: " ")
+        }
+
+        let identityToken: String? = credential.identityToken.flatMap {
+            String(data: $0, encoding: .utf8)
+        }
+
+        saveKeychainItem(key: Self.userIDKey, value: userID)
+        if let name, !name.isEmpty {
+            saveKeychainItem(key: Self.nameKey, value: name)
+        }
+        userIdentifier = userID
+        displayName = name ?? readKeychainItem(key: Self.nameKey)
+
+        if let token = identityToken {
+            Task {
+                await exchangeAppleToken(identityToken: token)
+                isAuthenticated = true
+            }
+        } else {
+            isAuthenticated = true
+        }
+    }
+
     func signOut() {
         deleteKeychainItem(key: Self.userIDKey)
         deleteKeychainItem(key: Self.nameKey)
@@ -215,35 +254,8 @@ extension AuthManager: ASAuthorizationControllerDelegate {
         controller: ASAuthorizationController,
         didCompleteWithAuthorization authorization: ASAuthorization
     ) {
-        guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential else {
-            return
-        }
-
-        let userID = credential.user
-        var name: String?
-        if let fullName = credential.fullName {
-            name = [fullName.givenName, fullName.familyName]
-                .compactMap { $0 }
-                .joined(separator: " ")
-        }
-
-        let identityToken: String? = credential.identityToken.flatMap {
-            String(data: $0, encoding: .utf8)
-        }
-
         Task { @MainActor in
-            saveKeychainItem(key: Self.userIDKey, value: userID)
-            if let name, !name.isEmpty {
-                saveKeychainItem(key: Self.nameKey, value: name)
-            }
-            userIdentifier = userID
-            displayName = name ?? readKeychainItem(key: Self.nameKey)
-
-            if let token = identityToken {
-                await exchangeAppleToken(identityToken: token)
-            }
-
-            isAuthenticated = true
+            handleAuthorization(authorization)
         }
     }
 
