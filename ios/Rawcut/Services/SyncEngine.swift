@@ -4,6 +4,7 @@ import BackgroundTasks
 import Photos
 import CryptoKit
 import UserNotifications
+import UIKit
 
 // MARK: - Sync Progress
 
@@ -14,14 +15,61 @@ struct SyncProgress: Sendable {
     var pendingCount: Int = 0
     var failedCount: Int = 0
     var totalBytesSynced: Int64 = 0
+    var pendingBytes: Int64 = 0
+
+    /// Currently uploading file info
+    var currentUploadName: String?
+    var currentUploadBytes: Int64 = 0
+    var currentUploadTotalBytes: Int64 = 0
+    var currentUploadMediaType: String?
+
+    /// Upload speed tracking for ETA
+    var recentBytesPerSecond: Double = 0
+    var syncStartedAt: Date?
 
     var fraction: Double {
         guard totalItems > 0 else { return 0 }
         return Double(syncedCount) / Double(totalItems)
     }
 
+    var currentUploadFraction: Double {
+        guard currentUploadTotalBytes > 0 else { return 0 }
+        return Double(currentUploadBytes) / Double(currentUploadTotalBytes)
+    }
+
     var isComplete: Bool {
         pendingCount == 0 && uploadingCount == 0
+    }
+
+    /// Estimated time remaining for pending uploads, or nil if unknown.
+    var estimatedTimeRemaining: TimeInterval? {
+        guard pendingBytes > 0, recentBytesPerSecond > 0 else { return nil }
+        return Double(pendingBytes) / recentBytesPerSecond
+    }
+
+    /// Human-readable ETA string
+    var etaText: String? {
+        guard let seconds = estimatedTimeRemaining else { return nil }
+        if seconds < 60 { return "< 1 min" }
+        if seconds < 3600 {
+            let mins = Int(seconds / 60)
+            return "~\(mins) min"
+        }
+        let hours = Int(seconds / 3600)
+        let mins = Int((seconds.truncatingRemainder(dividingBy: 3600)) / 60)
+        if hours >= 24 {
+            let days = hours / 24
+            return "~\(days)d \(hours % 24)h"
+        }
+        return "~\(hours)h \(mins)m"
+    }
+
+    /// Formatted size of current upload (e.g., "12.3 MB / 45.6 MB")
+    var currentUploadProgressText: String? {
+        guard currentUploadTotalBytes > 0 else { return nil }
+        let sent = ByteCountFormatter.string(fromByteCount: currentUploadBytes, countStyle: .file)
+        let total = ByteCountFormatter.string(fromByteCount: currentUploadTotalBytes, countStyle: .file)
+        return "\(sent) / \(total)"
     }
 }
 
@@ -51,6 +99,7 @@ final class SyncEngine: ObservableObject {
     private let maxRetries = 3
     private var currentTask: Task<Void, Never>?
     private var isPaused: Bool = false
+    private var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
 
     /// Reads user preference for Wi-Fi-only sync.
     /// Default matches @AppStorage("syncOnWiFiOnly") = true in SettingsView.
@@ -84,6 +133,14 @@ final class SyncEngine: ObservableObject {
         self.modelContainerRef = modelContainer
 
         observeNetworkChanges()
+
+        // Observe per-file upload progress for UI
+        uploadManager.onProgressUpdate = { [weak self] _, bytesSent, totalBytes in
+            Task { @MainActor [weak self] in
+                self?.syncProgress.currentUploadBytes = bytesSent
+                self?.syncProgress.currentUploadTotalBytes = totalBytes
+            }
+        }
     }
 
     func setStorageManager(_ manager: StorageManager) {
@@ -126,9 +183,16 @@ final class SyncEngine: ObservableObject {
         isPaused = false
         isSyncing = true
         syncStatusMessage = "Syncing..."
+        if syncProgress.syncStartedAt == nil {
+            syncProgress.syncStartedAt = .now
+        }
+
+        // Request background execution time so uploads continue when app goes to background
+        beginBackgroundTask()
 
         currentTask = Task {
             await processSyncQueue()
+            endBackgroundTask()
         }
     }
 
@@ -138,6 +202,7 @@ final class SyncEngine: ObservableObject {
         currentTask?.cancel()
         currentTask = nil
         syncStatusMessage = "Paused"
+        endBackgroundTask()
         print("[Rawcut] Sync paused")
     }
 
@@ -162,8 +227,10 @@ final class SyncEngine: ObservableObject {
 
     /// Called by AppDelegate to run sync in a background task context
     func performBackgroundSync() async {
+        guard !isSyncing else { return }
         guard isNetworkAllowedForSync else { return }
         isPaused = false
+        isSyncing = true
         await processSyncQueue()
     }
 
@@ -234,7 +301,13 @@ final class SyncEngine: ObservableObject {
             }
         }
         refreshProgress()
-        syncStatusMessage = "Uploading..."
+
+        // Track current upload info
+        syncProgress.currentUploadName = identifier
+        syncProgress.currentUploadBytes = 0
+        syncProgress.currentUploadTotalBytes = asset.fileSize
+        syncProgress.currentUploadMediaType = asset.mediaTypeRaw
+        syncStatusMessage = "Uploading \(asset.mediaType == .video ? "video" : "photo")..."
 
         // Export file from Photos library
         guard let fileURL = await exportAssetToTempFile(localIdentifier: identifier) else {
@@ -281,21 +354,33 @@ final class SyncEngine: ObservableObject {
             }
         }
 
+        // Use chunked upload for large files (>50MB), regular upload otherwise
+        let useChunkedUpload = asset.fileSize > 50_000_000
+
         // Attempt upload with retries
         var lastError: Error?
         for attempt in 0..<maxRetries {
             if Task.isCancelled || isPaused { return }
 
             do {
-                // Create a sendable snapshot for the upload
-                let assetSnapshot = MediaAsset(
-                    localIdentifier: asset.localIdentifier,
-                    syncStatus: asset.syncStatus,
-                    fileSize: asset.fileSize,
-                    mediaType: asset.mediaType,
-                    createdDate: asset.createdDate
-                )
-                let result = try await uploadManager.uploadAsset(assetSnapshot, fileURL: fileURL)
+                let result: UploadResult
+                if useChunkedUpload {
+                    result = try await chunkedUpload(
+                        fileURL: fileURL,
+                        asset: asset,
+                        contentHash: hash
+                    )
+                } else {
+                    // Create a sendable snapshot for the upload
+                    let assetSnapshot = MediaAsset(
+                        localIdentifier: asset.localIdentifier,
+                        syncStatus: asset.syncStatus,
+                        fileSize: asset.fileSize,
+                        mediaType: asset.mediaType,
+                        createdDate: asset.createdDate
+                    )
+                    result = try await uploadManager.uploadAsset(assetSnapshot, fileURL: fileURL)
+                }
 
                 // Mark as synced
                 if let dbAsset = fetchAsset(identifier: identifier, in: context) {
@@ -304,7 +389,18 @@ final class SyncEngine: ObservableObject {
                     try context.save()
                 }
                 syncProgress.totalBytesSynced += result.bytesUploaded
+                syncProgress.currentUploadName = nil
+                syncProgress.currentUploadBytes = 0
+                syncProgress.currentUploadTotalBytes = 0
                 lastSyncedDate = .now
+
+                // Update upload speed estimate (rolling average)
+                if let started = syncProgress.syncStartedAt {
+                    let elapsed = Date.now.timeIntervalSince(started)
+                    if elapsed > 0 {
+                        syncProgress.recentBytesPerSecond = Double(syncProgress.totalBytesSynced) / elapsed
+                    }
+                }
                 refreshProgress()
                 print("[Rawcut] Synced \(identifier)")
 
@@ -375,10 +471,13 @@ final class SyncEngine: ObservableObject {
             // Large videos (>100MB): prefer Wi-Fi + not low power mode
             let isLargeVideo = video.fileSize > 100_000_000
             if isLargeVideo && !networkMonitor.isWiFi {
+                let size = ByteCountFormatter.string(fromByteCount: video.fileSize, countStyle: .file)
+                syncStatusMessage = "Waiting for Wi-Fi (large file \(size))"
                 print("[Rawcut] Deferring large video upload (\(video.fileSize) bytes) until Wi-Fi")
                 return nil
             }
             if isLargeVideo && ProcessInfo.processInfo.isLowPowerModeEnabled {
+                syncStatusMessage = "Low Power Mode — large upload deferred"
                 print("[Rawcut] Deferring large video upload in Low Power Mode")
                 return nil
             }
@@ -432,13 +531,25 @@ final class SyncEngine: ObservableObject {
             let failedPredicate = #Predicate<MediaAsset> { $0.syncStatusRaw == "failed" }
             let failed = try context.fetchCount(FetchDescriptor<MediaAsset>(predicate: failedPredicate))
 
+            // Estimate pending bytes for ETA — only recalculate when count changes
+            // to avoid fetching all pending assets on every refresh.
+            var pBytes = syncProgress.pendingBytes
+            if pending != syncProgress.pendingCount || pBytes == 0 {
+                let pendingBytesPredicate = #Predicate<MediaAsset> { $0.syncStatusRaw == "pending" }
+                let pendingAssets = try context.fetch(FetchDescriptor<MediaAsset>(predicate: pendingBytesPredicate))
+                pBytes = pendingAssets.reduce(Int64(0)) { $0 + $1.fileSize }
+            }
+
             syncProgress = SyncProgress(
                 totalItems: all,
                 syncedCount: synced,
                 uploadingCount: uploading,
                 pendingCount: pending,
                 failedCount: failed,
-                totalBytesSynced: syncProgress.totalBytesSynced
+                totalBytesSynced: syncProgress.totalBytesSynced,
+                pendingBytes: pBytes,
+                recentBytesPerSecond: syncProgress.recentBytesPerSecond,
+                syncStartedAt: syncProgress.syncStartedAt
             )
         } catch {
             print("[Rawcut] Failed to refresh sync progress: \(error.localizedDescription)")
@@ -483,6 +594,84 @@ final class SyncEngine: ObservableObject {
             return
         }
         print("[Rawcut] Tag sync timed out for \(localIdentifier)")
+    }
+
+    // MARK: - Chunked Upload (for large files)
+
+    private func chunkedUpload(
+        fileURL: URL,
+        asset: MediaAsset,
+        contentHash: String?
+    ) async throws -> UploadResult {
+        let token = await MainActor.run { uploadManager.authManagerRef.authToken }
+        guard let token else { throw UploadError.noAuthToken }
+
+        let fileSize = try FileManager.default.attributesOfItem(atPath: fileURL.path)[.size] as? Int ?? 0
+        let contentType = asset.mediaType == .video ? "video/mp4" : "image/jpeg"
+        let filename = fileURL.lastPathComponent
+
+        // 1. Init chunked upload
+        let initResponse = try await APIClient.initChunkedUpload(
+            filename: filename,
+            fileSize: fileSize,
+            mediaType: asset.mediaTypeRaw,
+            contentType: contentType,
+            contentHash: contentHash,
+            authToken: token
+        )
+
+        // Dedup: server found existing blob
+        if initResponse.total_chunks == 0 {
+            print("[Rawcut] Chunked dedup: \(asset.localIdentifier) → \(initResponse.blob_name)")
+            return UploadResult(
+                cloudBlobName: initResponse.blob_name,
+                bytesUploaded: Int64(fileSize)
+            )
+        }
+
+        // 2. Upload chunks
+        let handle = try FileHandle(forReadingFrom: fileURL)
+        defer { handle.closeFile() }
+
+        let chunkSize = initResponse.chunk_size
+        var totalSent: Int64 = 0
+
+        for chunkIndex in 0..<initResponse.total_chunks {
+            if Task.isCancelled || isPaused { throw CancellationError() }
+
+            let offset = UInt64(chunkIndex * chunkSize)
+            handle.seek(toFileOffset: offset)
+            let chunkData = handle.readData(ofLength: chunkSize)
+            guard !chunkData.isEmpty else { break }
+
+            try await APIClient.uploadChunk(
+                uploadId: initResponse.upload_id,
+                chunkIndex: chunkIndex,
+                data: chunkData,
+                authToken: token
+            )
+
+            totalSent += Int64(chunkData.count)
+            syncProgress.currentUploadBytes = totalSent
+            syncProgress.currentUploadTotalBytes = Int64(fileSize)
+
+            let pct = Int(Double(totalSent) / Double(fileSize) * 100)
+            if pct % 10 == 0 {
+                print("[Rawcut] Chunked upload \(asset.localIdentifier): \(pct)%")
+            }
+        }
+
+        // 3. Commit
+        let commitResponse = try await APIClient.commitChunkedUpload(
+            uploadId: initResponse.upload_id,
+            authToken: token
+        )
+
+        print("[Rawcut] Chunked upload complete: \(asset.localIdentifier) → \(commitResponse.blob_name)")
+        return UploadResult(
+            cloudBlobName: commitResponse.blob_name,
+            bytesUploaded: Int64(commitResponse.size)
+        )
     }
 
     // MARK: - Photo Export
@@ -589,8 +778,8 @@ final class SyncEngine: ObservableObject {
 
     private func sendUploadFailureNotification(assetId: String, error: Error?) {
         let content = UNMutableNotificationContent()
-        content.title = "업로드 실패"
-        content.body = "일부 미디어를 클라우드에 올리지 못했습니다. 앱을 열어 다시 시도하세요."
+        content.title = "Upload Failed"
+        content.body = "Some media couldn't be uploaded to the cloud. Open the app to retry."
         content.sound = .default
 
         let request = UNNotificationRequest(
@@ -622,6 +811,133 @@ final class SyncEngine: ObservableObject {
 
         let digest = hasher.finalize()
         return digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    // MARK: - Background Task Management
+
+    /// Request extended background execution time from iOS.
+    /// This gives ~30s (up to ~3min) for the current upload to finish.
+    private func beginBackgroundTask() {
+        guard backgroundTaskID == .invalid else { return }
+        backgroundTaskID = UIApplication.shared.beginBackgroundTask(withName: "rawcut.sync") { [weak self] in
+            // iOS is about to kill our background time — schedule a BGTask to continue later
+            self?.endBackgroundTask()
+            self?.scheduleBackgroundProcessing()
+            print("[Rawcut] Background time expiring, scheduled BGTask for remaining uploads")
+        }
+        print("[Rawcut] Began background task for sync")
+    }
+
+    private func endBackgroundTask() {
+        guard backgroundTaskID != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(backgroundTaskID)
+        backgroundTaskID = .invalid
+    }
+
+    /// Called when app transitions to/from foreground.
+    /// Resumes sync when returning to foreground if there are pending items.
+    func handleScenePhaseChange(isActive: Bool) {
+        if isActive {
+            // Returning to foreground — resume sync if needed
+            refreshProgress()
+            if syncProgress.pendingCount > 0 && !isSyncing && !isPaused {
+                print("[Rawcut] App became active, resuming sync (\(syncProgress.pendingCount) pending)")
+                startSync()
+            }
+        } else {
+            // Going to background — batch enqueue pending uploads to background URLSession
+            // so iOS can continue uploading even after app suspension
+            if syncProgress.pendingCount > 0 {
+                beginBackgroundTask()
+                Task {
+                    await enqueueBackgroundBatch()
+                    scheduleBackgroundProcessing()
+                    endBackgroundTask()
+                }
+            }
+        }
+    }
+
+    // MARK: - Batch Background Enqueue
+
+    /// Pre-export and enqueue up to N pending assets to the background URLSession.
+    /// iOS will upload them even after the app is suspended/terminated.
+    private let backgroundBatchSize = 10
+
+    private func enqueueBackgroundBatch() async {
+        let context = ModelContext(modelContainer)
+
+        // Fetch pending photos first (smaller), then videos
+        let pendingPredicate = #Predicate<MediaAsset> {
+            $0.syncStatusRaw == "pending"
+        }
+        var descriptor = FetchDescriptor<MediaAsset>(
+            predicate: pendingPredicate,
+            sortBy: [SortDescriptor(\.fileSize, order: .forward)] // smallest first for background
+        )
+        descriptor.fetchLimit = backgroundBatchSize
+
+        guard let pendingAssets = try? context.fetch(descriptor), !pendingAssets.isEmpty else {
+            print("[Rawcut] No pending assets for background batch")
+            return
+        }
+
+        var enqueued = 0
+        for asset in pendingAssets {
+            guard isNetworkAllowedForSync else { break }
+
+            // Skip large videos in background (>100MB) — too risky for background time
+            if asset.fileSize > 100_000_000 { continue }
+
+            // Export to temp file
+            guard let fileURL = await exportAssetToTempFile(localIdentifier: asset.localIdentifier) else {
+                continue
+            }
+
+            // Compute hash
+            let hash = computeSHA256(fileURL: fileURL)
+            if let hash {
+                asset.contentHash = hash
+            }
+
+            // Mark as uploading
+            asset.syncStatus = .uploading
+            try? context.save()
+
+            // Create a sendable snapshot
+            let snapshot = MediaAsset(
+                localIdentifier: asset.localIdentifier,
+                syncStatus: .uploading,
+                fileSize: asset.fileSize,
+                mediaType: asset.mediaType,
+                createdDate: asset.createdDate,
+                contentHash: hash
+            )
+
+            // Enqueue on background URLSession — iOS will handle even after app death
+            do {
+                _ = try await uploadManager.uploadAsset(snapshot, fileURL: fileURL)
+
+                // Mark synced (if we're still alive to see the result)
+                if let dbAsset = fetchAsset(identifier: asset.localIdentifier, in: context) {
+                    dbAsset.syncStatus = .synced
+                    try? context.save()
+                }
+                enqueued += 1
+            } catch {
+                // Revert to pending so foreground can retry
+                if let dbAsset = fetchAsset(identifier: asset.localIdentifier, in: context) {
+                    dbAsset.syncStatus = .pending
+                    try? context.save()
+                }
+            }
+
+            // Clean up temp file
+            try? FileManager.default.removeItem(at: fileURL)
+        }
+
+        refreshProgress()
+        print("[Rawcut] Background batch: enqueued \(enqueued)/\(pendingAssets.count) uploads")
     }
 
     // MARK: - Network Observation

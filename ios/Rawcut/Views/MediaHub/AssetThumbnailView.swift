@@ -3,9 +3,12 @@ import SwiftUI
 
 /// Enhanced thumbnail component for the media grid.
 /// Square thumbnail with rounded corners (12pt), sync badge, video duration, and content tag.
+/// Shows inline download progress for cloud-only assets being restored.
 struct AssetThumbnailView: View {
     let asset: MediaAsset
     var onRetry: (() -> Void)? = nil
+    /// Download progress (0.0 to 1.0), nil when not downloading
+    var downloadProgress: Double? = nil
 
     @State private var thumbnail: UIImage?
     @State private var isPulsing = false
@@ -19,8 +22,19 @@ struct AssetThumbnailView: View {
                 .aspectRatio(1, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
 
+            // Download progress overlay
+            if let progress = downloadProgress {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.black.opacity(0.5))
+
+                // Circular progress indicator
+                CircularProgressView(progress: progress)
+                    .frame(width: 36, height: 36)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+
             // Content type tag (top-left)
-            if let firstTag = asset.tags?.first {
+            if let firstTag = asset.tags?.first, downloadProgress == nil {
                 Text(firstTag)
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(.white)
@@ -32,21 +46,23 @@ struct AssetThumbnailView: View {
             }
 
             // Bottom-right overlays
-            VStack(alignment: .trailing, spacing: Spacing.xs) {
-                Spacer()
-                HStack(spacing: Spacing.xs) {
+            if downloadProgress == nil {
+                VStack(alignment: .trailing, spacing: Spacing.xs) {
                     Spacer()
+                    HStack(spacing: Spacing.xs) {
+                        Spacer()
 
-                    // Video duration badge
-                    if asset.mediaType == .video {
-                        durationBadge
+                        // Video duration badge
+                        if asset.mediaType == .video {
+                            durationBadge
+                        }
+
+                        // Sync status indicator
+                        syncBadge
                     }
-
-                    // Sync status indicator
-                    syncBadge
                 }
+                .padding(Spacing.sm)
             }
-            .padding(Spacing.sm)
         }
         .onAppear {
             loadThumbnail()
@@ -146,7 +162,9 @@ struct AssetThumbnailView: View {
         )
 
         if let phAsset = fetchResult.firstObject {
-            let size = CGSize(width: 300, height: 300)
+            let scale = UIScreen.main.scale
+            let cellWidth: CGFloat = (UIScreen.main.bounds.width - 4) / 3 // 3-column grid with 2pt spacing
+            let size = CGSize(width: cellWidth * scale, height: cellWidth * scale)
             let options = PHImageRequestOptions()
             options.deliveryMode = .opportunistic
             options.isNetworkAccessAllowed = true
@@ -196,6 +214,35 @@ struct AssetThumbnailView: View {
     }
 }
 
+// MARK: - Circular Progress View
+
+/// Minimal circular progress indicator for download overlays.
+private struct CircularProgressView: View {
+    let progress: Double
+
+    var body: some View {
+        ZStack {
+            // Background circle
+            Circle()
+                .fill(Color.black.opacity(0.6))
+
+            // Progress arc
+            Circle()
+                .trim(from: 0, to: max(progress, 0.02))
+                .stroke(Color.white, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .padding(6)
+
+            // Center icon
+            if progress < 0.01 {
+                ProgressView()
+                    .tint(.white)
+                    .scaleEffect(0.7)
+            }
+        }
+    }
+}
+
 #Preview {
     ZStack {
         Color.rcBackground.ignoresSafeArea()
@@ -215,11 +262,10 @@ struct AssetThumbnailView: View {
             ))
             AssetThumbnailView(asset: MediaAsset(
                 localIdentifier: "preview-3",
-                syncStatus: .failed,
+                syncStatus: .cloudOnly,
                 fileSize: 1_000_000,
-                mediaType: .video,
-                tags: ["outdoor"]
-            ))
+                mediaType: .photo
+            ), downloadProgress: 0.65)
         }
     }
     .modelContainer(for: MediaAsset.self, inMemory: true)

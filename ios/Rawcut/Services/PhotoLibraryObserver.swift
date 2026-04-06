@@ -22,13 +22,15 @@ final class PhotoLibraryObserver: NSObject, ObservableObject {
 
     private let modelContainer: ModelContainer
     private weak var syncEngine: SyncEngine?
+    private weak var downloadManager: DownloadManager?
 
     // Track the last fetch result for diffing
     private var lastFetchResult: PHFetchResult<PHAsset>?
 
-    init(modelContainer: ModelContainer, syncEngine: SyncEngine? = nil) {
+    init(modelContainer: ModelContainer, syncEngine: SyncEngine? = nil, downloadManager: DownloadManager? = nil) {
         self.modelContainer = modelContainer
         self.syncEngine = syncEngine
+        self.downloadManager = downloadManager
         super.init()
         updateAuthorizationStatus()
     }
@@ -272,6 +274,13 @@ extension PhotoLibraryObserver: PHPhotoLibraryChangeObserver {
         // Process inserted assets
         if let insertedObjects = changes.insertedObjects as? [PHAsset], !insertedObjects.isEmpty {
             for phAsset in insertedObjects {
+                // Skip assets currently being restored from cloud download.
+                // The download callback in MediaHubView handles updating the existing record.
+                if let dm = downloadManager, dm.pendingRestoreIdentifiers.contains(phAsset.localIdentifier) {
+                    print("[Rawcut] Skipping inserted asset \(phAsset.localIdentifier) — pending cloud restore")
+                    continue
+                }
+
                 // Filter: skip screenshots and non-photo/video
                 if phAsset.mediaType == .image && phAsset.mediaSubtypes.contains(.photoScreenshot) {
                     continue

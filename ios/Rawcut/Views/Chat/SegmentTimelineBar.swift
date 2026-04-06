@@ -11,14 +11,14 @@ struct SegmentTimelineBar: View {
     }
 
     private let segmentColors: [Color] = [
-        .rcAccent,
-        Color(red: 0.6, green: 0.4, blue: 0.8),   // purple
-        Color(red: 0.9, green: 0.5, blue: 0.3),   // orange
-        Color(red: 0.3, green: 0.7, blue: 0.9),   // blue
-        Color(red: 0.8, green: 0.3, blue: 0.5),   // pink
-        Color(red: 0.5, green: 0.8, blue: 0.4),   // green
-        Color(red: 0.9, green: 0.8, blue: 0.3),   // yellow
-        Color(red: 0.4, green: 0.6, blue: 0.9),   // light blue
+        .white,
+        Color(white: 0.85),
+        Color(white: 0.70),
+        Color(white: 0.90),
+        Color(white: 0.65),
+        Color(white: 0.80),
+        Color(white: 0.75),
+        Color(white: 0.88),
     ]
 
     var body: some View {

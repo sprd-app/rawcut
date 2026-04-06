@@ -16,7 +16,7 @@ struct SignInView: View {
                 // Logo / Brand
                 VStack(spacing: Spacing.md) {
                     Image(systemName: "film.stack.fill")
-                        .font(.system(size: 64))
+                        .font(.system(size: 48, weight: .thin))
                         .foregroundStyle(Color.rcAccent)
 
                     Text("rawcut")
@@ -44,7 +44,7 @@ struct SignInView: View {
                 }
                 .signInWithAppleButtonStyle(.white)
                 .frame(height: 50)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
                 .padding(.horizontal, Spacing.xl)
 
                 // Manual trigger as fallback (SignInWithAppleButton may not call delegate)

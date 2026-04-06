@@ -1,4 +1,4 @@
-"""Storage management — media download, tier transitions, usage stats."""
+"""Storage management — media download, tier transitions, usage stats, streaming."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 
 import aiosqlite
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
 from app.config import settings
@@ -46,6 +47,19 @@ class OptimizeResponse(BaseModel):
 
     status: str
     threshold_days: int
+
+
+class QuotaResponse(BaseModel):
+    """User storage quota status."""
+
+    used_bytes: int
+    quota_bytes: int
+    used_percentage: float
+    is_over_quota: bool
+
+
+# Default per-user quota: 500 GB
+DEFAULT_QUOTA_BYTES = 500 * 1024 * 1024 * 1024
 
 
 # ---------------------------------------------------------------------------
@@ -155,3 +169,92 @@ async def storage_usage(
     stats["icloud_200gb_monthly_usd"] = 2.99
 
     return stats
+
+
+# ---------------------------------------------------------------------------
+# Video streaming (progressive download via signed URL redirect)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/media/{blob_name:path}/stream")
+async def stream_media(
+    blob_name: str,
+    request: Request,
+) -> RedirectResponse:
+    """Redirect to a signed Azure Blob URL for progressive download / streaming.
+
+    The signed URL supports Range requests natively, so AVPlayer on iOS
+    can seek and stream without downloading the entire file.
+    """
+    user_id: str = getattr(request.state, "user_id", "anonymous")
+
+    if not blob_name.startswith(f"{user_id}/"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied",
+        )
+
+    url = await get_blob_url(blob_name)
+    return RedirectResponse(url=url, status_code=302)
+
+
+# ---------------------------------------------------------------------------
+# Quota
+# ---------------------------------------------------------------------------
+
+
+@router.get("/quota", response_model=QuotaResponse)
+async def get_quota(
+    request: Request,
+    db: aiosqlite.Connection = Depends(get_db),
+) -> dict:
+    """Get the user's storage quota status."""
+    user_id: str = getattr(request.state, "user_id", "anonymous")
+
+    cursor = await db.execute(
+        "SELECT COALESCE(SUM(file_size), 0) as used FROM media_assets WHERE user_id = ?",
+        (user_id,),
+    )
+    row = await cursor.fetchone()
+    used = dict(row)["used"] if row else 0
+
+    quota = DEFAULT_QUOTA_BYTES
+    pct = round((used / quota) * 100, 1) if quota > 0 else 0
+
+    return {
+        "used_bytes": used,
+        "quota_bytes": quota,
+        "used_percentage": pct,
+        "is_over_quota": used >= quota,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Auto Cool tier transition (cron-friendly)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/auto-cool")
+async def auto_cool_transition(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    days: int = 30,
+) -> dict:
+    """Move old blobs to Cool tier. Designed to be called by a cron job.
+
+    Processes all users, not just the requesting one.
+    """
+    async with aiosqlite.connect(settings.sqlite_path) as db:
+        db.row_factory = aiosqlite.Row
+        cutoff = (datetime.now(UTC) - timedelta(days=days)).isoformat()
+        cursor = await db.execute(
+            "SELECT DISTINCT user_id FROM media_assets"
+            " WHERE sync_status = 'complete' AND created_at < ?",
+            (cutoff,),
+        )
+        users = [dict(row)["user_id"] for row in await cursor.fetchall()]
+
+    for uid in users:
+        background_tasks.add_task(_transition_old_blobs_to_cool, uid, days)
+
+    return {"status": "auto-cool started", "users": len(users), "threshold_days": days}

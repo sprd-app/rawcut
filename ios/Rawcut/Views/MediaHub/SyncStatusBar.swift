@@ -53,36 +53,107 @@ struct SyncStatusBar: View {
         .accessibilityHint("Tap to \(isExpanded ? "collapse" : "expand") sync details")
     }
 
+    /// True when this looks like the first-ever sync (many pending, few synced)
+    private var isInitialSync: Bool {
+        let p = syncEngine.syncProgress
+        return p.pendingCount > 50 && p.syncedCount < p.pendingCount / 2
+    }
+
     // MARK: - Compact Bar
 
     private var compactBar: some View {
-        HStack(spacing: Spacing.sm) {
-            if syncEngine.isSyncing {
-                syncIndicator
-            } else if syncEngine.syncProgress.failedCount > 0 {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 10))
-                    .foregroundStyle(Color.rcError)
-            } else if syncEngine.syncProgress.isComplete && syncEngine.syncProgress.totalItems > 0 {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 10))
-                    .foregroundStyle(Color.rcAccent)
+        VStack(spacing: 0) {
+            // Initial sync banner — prominent, informative
+            if isInitialSync && syncEngine.isSyncing {
+                initialSyncBanner
             }
 
-            Text(statusText)
-                .font(.rcCaption)
-                .foregroundStyle(Color.rcTextSecondary)
-                .lineLimit(1)
+            HStack(spacing: Spacing.sm) {
+                if syncEngine.isSyncing {
+                    syncIndicator
+                } else if syncEngine.syncProgress.failedCount > 0 {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Color.rcError)
+                } else if syncEngine.syncProgress.isComplete && syncEngine.syncProgress.totalItems > 0 {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Color.rcAccent)
+                }
 
-            Spacer()
+                Text(statusText)
+                    .font(.rcCaption)
+                    .foregroundStyle(Color.rcTextSecondary)
+                    .lineLimit(1)
 
-            Image(systemName: "chevron.down")
-                .font(.system(size: 8, weight: .semibold))
-                .foregroundStyle(Color.rcTextTertiary)
-                .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                Spacer()
+
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(Color.rcTextTertiary)
+                    .rotationEffect(.degrees(isExpanded ? 180 : 0))
+            }
+            .padding(.horizontal, Spacing.lg)
+            .padding(.vertical, Spacing.sm)
+        }
+    }
+
+    // MARK: - Initial Sync Banner
+
+    private var initialSyncBanner: some View {
+        let p = syncEngine.syncProgress
+        let total = p.syncedCount + p.pendingCount + p.uploadingCount
+        return VStack(spacing: Spacing.sm) {
+            HStack(spacing: Spacing.sm) {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Color.rcAccent)
+
+                Text("Initial Sync")
+                    .font(.rcBodyMedium)
+                    .foregroundStyle(Color.rcTextPrimary)
+
+                Spacer()
+
+                Text("\(p.syncedCount) / \(total)")
+                    .font(.system(size: 13, weight: .medium, design: .monospaced))
+                    .foregroundStyle(Color.rcTextSecondary)
+            }
+
+            // Full-width progress bar
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(Color.rcSurfaceElevated)
+                        .frame(height: 6)
+
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(Color.rcAccent)
+                        .frame(
+                            width: max(geometry.size.width * p.fraction, 2),
+                            height: 6
+                        )
+                }
+            }
+            .frame(height: 6)
+
+            HStack {
+                if let eta = p.etaText {
+                    Text("Estimated: \(eta)")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.rcTextTertiary)
+                }
+
+                Spacer()
+
+                Text("Wi-Fi + charging recommended")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.rcTextTertiary)
+            }
         }
         .padding(.horizontal, Spacing.lg)
         .padding(.vertical, Spacing.sm)
+        .background(Color.rcSurface)
     }
 
     // MARK: - Expanded Detail
@@ -103,12 +174,33 @@ struct SyncStatusBar: View {
             }
 
             if syncEngine.syncProgress.uploadingCount > 0 {
-                statusRow(
-                    icon: "arrow.up.circle.fill",
-                    color: .rcWarning,
-                    label: "\(syncEngine.syncProgress.uploadingCount) uploading",
-                    detail: nil
-                )
+                VStack(alignment: .leading, spacing: Spacing.xs) {
+                    statusRow(
+                        icon: "arrow.up.circle.fill",
+                        color: .rcWarning,
+                        label: "\(syncEngine.syncProgress.uploadingCount) uploading",
+                        detail: syncEngine.syncProgress.currentUploadProgressText
+                    )
+
+                    // Per-file progress bar
+                    if syncEngine.syncProgress.currentUploadFraction > 0 {
+                        GeometryReader { geometry in
+                            ZStack(alignment: .leading) {
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(Color.rcSurfaceElevated)
+                                    .frame(height: 3)
+
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(Color.rcWarning)
+                                    .frame(
+                                        width: geometry.size.width * syncEngine.syncProgress.currentUploadFraction,
+                                        height: 3
+                                    )
+                            }
+                        }
+                        .frame(height: 3)
+                    }
+                }
             }
 
             if syncEngine.syncProgress.pendingCount > 0 {
@@ -223,7 +315,11 @@ struct SyncStatusBar: View {
         }
 
         if progress.pendingCount > 0 {
-            parts.append("\(progress.pendingCount) pending")
+            var pendingText = "\(progress.pendingCount) pending"
+            if let eta = progress.etaText {
+                pendingText += " (\(eta))"
+            }
+            parts.append(pendingText)
         }
 
         if progress.failedCount > 0 {

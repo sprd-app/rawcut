@@ -50,6 +50,9 @@ final class UploadManager: NSObject, Sendable {
     private var authManager: AuthManager { authManagerRef }
     private let baseURL: URL
 
+    /// Called on each progress update. Observers can use this for real-time UI updates.
+    nonisolated(unsafe) var onProgressUpdate: ((_ assetID: String, _ bytesSent: Int64, _ totalBytes: Int64) -> Void)?
+
     init(authManager: AuthManager, baseURL: URL = URL(string: APIClient.baseURL)!) {
         self.authManagerRef = authManager
         self.baseURL = baseURL
@@ -137,6 +140,9 @@ final class UploadManager: NSObject, Sendable {
         request.setValue(asset.localIdentifier, forHTTPHeaderField: "X-Local-Identifier")
         request.setValue(asset.mediaTypeRaw, forHTTPHeaderField: "X-Media-Type")
         request.setValue("\(asset.fileSize)", forHTTPHeaderField: "X-File-Size")
+        if let hash = asset.contentHash {
+            request.setValue(hash, forHTTPHeaderField: "X-Content-Hash")
+        }
 
         let uploadState = UploadState(assetIdentifier: asset.localIdentifier)
         await activeUploads.set(asset.localIdentifier, state: uploadState)
@@ -207,7 +213,10 @@ extension UploadManager: URLSessionTaskDelegate, URLSessionDataDelegate {
         Task {
             await activeUploads.updateProgress(assetID, progress: progress, bytesSent: totalBytesSent)
         }
-        print("[Rawcut] Upload progress \(assetID): \(Int(progress * 100))%")
+        onProgressUpdate?(assetID, totalBytesSent, totalBytesExpectedToSend)
+        if Int(progress * 100) % 10 == 0 {
+            print("[Rawcut] Upload progress \(assetID): \(Int(progress * 100))%")
+        }
     }
 
     func urlSession(

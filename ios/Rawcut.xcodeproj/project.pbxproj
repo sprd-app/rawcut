@@ -37,6 +37,8 @@
 		C3D4E5F607182930415B6C7D /* RenderStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4E5F60718293041526C7D8E /* RenderStatusView.swift */; };
 		C528FC3BEFD2F8D4DE0E0F4E /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93A674E9FC88B9CC8571458C /* ContentView.swift */; };
 		D3BFAB74117185BED700BA45 /* EmptyStateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A3417AADA5BA39E4FDCF2F0 /* EmptyStateView.swift */; };
+		A1B2C3D4E5F607182930BBBB /* StorageOptimizationBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F607182930AAAA /* StorageOptimizationBanner.swift */; };
+		A1B2C3D4E5F607182930DDDD /* CloudVideoPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F607182930CCCC /* CloudVideoPlayerView.swift */; };
 		DD55EE66FF77AA22BB33CC44 /* ProjectsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC44DD55EE66FF77AA22BB33 /* ProjectsView.swift */; };
 		E2316A028038CEE58003EDCD /* AssetThumbnailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4599CEC66309486D1AE556B2 /* AssetThumbnailView.swift */; };
 		E72C373C931067F9BE34D818 /* SyncStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE5C805CF93AFF5006ECFCEF /* SyncStatus.swift */; };
@@ -97,6 +99,8 @@
 		EE55FF66AA11BB22CC33DD44 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		EE5C805CF93AFF5006ECFCEF /* SyncStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncStatus.swift; sourceTree = "<group>"; };
 		EE66FF77AA22BB33CC44DD55 /* CreateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreateView.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F607182930AAAA /* StorageOptimizationBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageOptimizationBanner.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F607182930CCCC /* CloudVideoPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudVideoPlayerView.swift; sourceTree = "<group>"; };
 
 /* End PBXFileReference section */
 
@@ -133,6 +137,7 @@
 			isa = PBXGroup;
 			children = (
 				4A3417AADA5BA39E4FDCF2F0 /* EmptyStateView.swift */,
+				A1B2C3D4E5F607182930AAAA /* StorageOptimizationBanner.swift */,
 			);
 			path = Shared;
 			sourceTree = "<group>";
@@ -173,6 +178,7 @@
 			children = (
 				4599CEC66309486D1AE556B2 /* AssetThumbnailView.swift */,
 				0F4A1DBAD71BD3B6E817A43F /* CloudAssetDownloadSheet.swift */,
+				A1B2C3D4E5F607182930CCCC /* CloudVideoPlayerView.swift */,
 				2DD2938CDEB263EFEB8DCCEB /* MediaHubView.swift */,
 				DB7173877C37667943D6F1CD /* SearchView.swift */,
 				6E71CEC49DE7008C7ECF29EE /* SyncStatusBar.swift */,
@@ -417,6 +423,8 @@
 				1AAA2CBCAA61018C8E9B0C3F /* RenderProgressBubble.swift in Sources */,
 
 				0F4B431FC267E747B81C52D5 /* SegmentTimelineBar.swift in Sources */,
+				A1B2C3D4E5F607182930BBBB /* StorageOptimizationBanner.swift in Sources */,
+				A1B2C3D4E5F607182930DDDD /* CloudVideoPlayerView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -8,6 +8,7 @@ struct CloudAssetDownloadSheet: View {
     let onDownloaded: (String?) -> Void
 
     @State private var errorMessage: String?
+    @State private var showVideoPlayer = false
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -41,27 +42,61 @@ struct CloudAssetDownloadSheet: View {
 
             Spacer()
 
-            // Download button
-            Button {
-                Task { await download() }
-            } label: {
-                HStack(spacing: Spacing.sm) {
-                    if downloadManager.isDownloading {
-                        ProgressView()
-                            .tint(.white)
-                    } else {
-                        Image(systemName: "arrow.down.circle.fill")
+            VStack(spacing: Spacing.sm) {
+                // Stream button (video only)
+                if asset.mediaType == .video, let blobName = asset.cloudBlobName {
+                    Button {
+                        showVideoPlayer = true
+                    } label: {
+                        HStack(spacing: Spacing.sm) {
+                            Image(systemName: "play.circle.fill")
+                            Text("Stream Video")
+                                .font(.rcBody)
+                                .fontWeight(.semibold)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, Spacing.md)
+                        .background(Color.rcAccent, in: RoundedRectangle(cornerRadius: 12))
+                        .foregroundStyle(.black)
                     }
-                    Text(downloadManager.isDownloading ? "Downloading..." : "Download to Device")
-                        .font(.rcBody)
-                        .fontWeight(.semibold)
+                    .fullScreenCover(isPresented: $showVideoPlayer) {
+                        NavigationStack {
+                            CloudVideoPlayerView(blobName: blobName)
+                                .toolbar {
+                                    ToolbarItem(placement: .topBarLeading) {
+                                        Button("Done") { showVideoPlayer = false }
+                                            .foregroundStyle(Color.rcAccent)
+                                    }
+                                }
+                        }
+                    }
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, Spacing.md)
-                .background(Color.rcAccent, in: RoundedRectangle(cornerRadius: 12))
-                .foregroundStyle(.black)
+
+                // Download button
+                Button {
+                    Task { await download() }
+                } label: {
+                    HStack(spacing: Spacing.sm) {
+                        if downloadManager.isDownloading {
+                            ProgressView()
+                                .tint(asset.mediaType == .video ? Color.rcAccent : .white)
+                        } else {
+                            Image(systemName: "arrow.down.circle.fill")
+                        }
+                        Text(downloadManager.isDownloading ? "Downloading..." : "Download to Device")
+                            .font(.rcBody)
+                            .fontWeight(.semibold)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, Spacing.md)
+                    .background(
+                        asset.mediaType == .video ? Color.rcSurface : Color.rcAccent,
+                        in: RoundedRectangle(cornerRadius: 12)
+                    )
+                    .foregroundStyle(asset.mediaType == .video ? Color.rcTextPrimary : .black)
+                }
+                .disabled(downloadManager.isDownloading)
             }
-            .disabled(downloadManager.isDownloading)
             .padding(.bottom, Spacing.lg)
         }
         .padding(.horizontal, Spacing.lg)
@@ -106,7 +141,8 @@ struct CloudAssetDownloadSheet: View {
         do {
             let newLocalId = try await downloadManager.downloadToPhotos(
                 blobName: blobName,
-                mediaType: asset.mediaType
+                mediaType: asset.mediaType,
+                assetId: asset.localIdentifier
             )
             onDownloaded(newLocalId)
         } catch {

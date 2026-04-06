@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import uuid
 from typing import AsyncIterator
@@ -30,10 +31,19 @@ def _get_user_lock(user_id: str) -> asyncio.Lock:
     return _user_locks[user_id]
 
 
-async def _request_body_chunks(request: Request) -> AsyncIterator[bytes]:
-    """Yield raw body chunks from the incoming request stream."""
-    async for chunk in request.stream():
-        yield chunk
+class _HashingStream:
+    """Wraps request.stream() to compute SHA256 while streaming."""
+
+    def __init__(self, request: Request) -> None:
+        self._request = request
+        self._hasher = hashlib.sha256()
+        self.hexdigest: str | None = None
+
+    async def __aiter__(self):
+        async for chunk in self._request.stream():
+            self._hasher.update(chunk)
+            yield chunk
+        self.hexdigest = self._hasher.hexdigest()
 
 
 def _media_type_from_content_type(content_type: str) -> str:
@@ -145,15 +155,18 @@ async def stream_upload(
 
     content_type = request.headers.get("content-type", "application/octet-stream")
     filename_hint = request.headers.get("x-filename", "upload")
+    client_hash = request.headers.get("x-content-hash")
     extension = filename_hint.rsplit(".", maxsplit=1)[-1] if "." in filename_hint else "bin"
     blob_name = f"{user_id}/{uuid.uuid4().hex}.{extension}"
     media_type = _media_type_from_content_type(content_type)
+
+    hashing_stream = _HashingStream(request)
 
     async with lock:
         try:
             result = await blob_storage.upload_stream(
                 blob_name=blob_name,
-                data_stream=_request_body_chunks(request),
+                data_stream=hashing_stream,
                 content_type=content_type,
             )
         except Exception as exc:
@@ -162,6 +175,25 @@ async def stream_upload(
                 detail=f"Blob upload failed: {exc}",
             ) from exc
 
+    # Verify content hash if client provided one
+    server_hash = hashing_stream.hexdigest
+    if client_hash and server_hash and client_hash != server_hash:
+        logger.error(
+            "Hash mismatch for %s: client=%s server=%s — deleting orphan blob",
+            blob_name, client_hash, server_hash,
+        )
+        # Clean up the orphaned blob
+        try:
+            await blob_storage.delete_blob(blob_name)
+        except Exception:
+            logger.exception("Failed to delete orphan blob %s after hash mismatch", blob_name)
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Content hash mismatch: expected {client_hash}, got {server_hash}",
+        )
+
+    content_hash = server_hash or client_hash
+
     # Register asset in DB
     asset_id = str(uuid.uuid4())
     try:
@@ -169,10 +201,10 @@ async def stream_upload(
             await db.execute(
                 """
                 INSERT OR IGNORE INTO media_assets
-                    (id, user_id, blob_name, file_size, media_type, sync_status)
-                VALUES (?, ?, ?, ?, ?, 'complete')
+                    (id, user_id, blob_name, file_size, media_type, sync_status, content_hash)
+                VALUES (?, ?, ?, ?, ?, 'complete', ?)
                 """,
-                (asset_id, user_id, blob_name, result.get("size", 0), media_type),
+                (asset_id, user_id, blob_name, result.get("size", 0), media_type, content_hash),
             )
             await db.commit()
     except Exception:
@@ -183,4 +215,5 @@ async def stream_upload(
     if media_type == "video":
         background_tasks.add_task(_populate_duration_background, asset_id, blob_name)
 
+    result["verified"] = bool(client_hash and server_hash and client_hash == server_hash)
     return {**result, "asset_id": asset_id}

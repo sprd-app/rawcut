@@ -67,7 +67,7 @@ struct ProjectsView: View {
             // Thumbnail
             ZStack {
                 RoundedRectangle(cornerRadius: 10)
-                    .fill(Color.rcSurfaceElevated)
+                    .fill(Color.rcSurface)
                     .aspectRatio(16/9, contentMode: .fit)
 
                 if let render, let thumbURL = thumbnails[render.id], let url = URL(string: thumbURL) {
@@ -78,7 +78,7 @@ struct ProjectsView: View {
                     }
                     .frame(maxWidth: .infinity)
                     .aspectRatio(16/9, contentMode: .fill)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
                     .overlay {
                         Image(systemName: "play.circle.fill")
                             .font(.system(size: 36))
@@ -133,7 +133,7 @@ struct ProjectsView: View {
             }
         }
         .padding(Spacing.sm)
-        .background(Color.rcSurface, in: RoundedRectangle(cornerRadius: 12))
+        .background(Color.rcSurface, in: RoundedRectangle(cornerRadius: 10))
     }
 
     // MARK: - Load

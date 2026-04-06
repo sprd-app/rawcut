@@ -118,6 +118,7 @@ async def init_db() -> None:
         "ALTER TABLE media_assets ADD COLUMN transcript TEXT DEFAULT NULL",
         "ALTER TABLE renders ADD COLUMN thumbnail_blob TEXT DEFAULT NULL",
         "ALTER TABLE media_assets ADD COLUMN content_hash TEXT DEFAULT NULL",
+        "ALTER TABLE media_assets ADD COLUMN storage_tier TEXT DEFAULT NULL",
     ]
 
     _migration_indexes = [

@@ -4,6 +4,7 @@ import SwiftData
 @main
 struct RawcutApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    @Environment(\.scenePhase) private var scenePhase
 
     // Services — initialized once, shared via environment
     @StateObject private var syncEngine: SyncEngine
@@ -27,12 +28,13 @@ struct RawcutApp: App {
             networkMonitor: network,
             modelContainer: container
         )
+        let download = DownloadManager(authManager: auth)
+
         let observer = PhotoLibraryObserver(
             modelContainer: container,
-            syncEngine: engine
+            syncEngine: engine,
+            downloadManager: download
         )
-
-        let download = DownloadManager(authManager: auth)
         let storage = StorageManager(modelContainer: container)
 
         _syncEngine = StateObject(wrappedValue: engine)
@@ -75,8 +77,21 @@ struct RawcutApp: App {
                     // If .notDetermined or .denied, MediaHubView shows the "Grant Access" button
                     // which calls photoObserver.requestAuthorization()
 
-                    // Auto-optimize storage on launch if needed
-                    await storageManager.autoOptimizeIfNeeded()
+                    // Check storage optimization recommendation on launch
+                    storageManager.checkOptimizationRecommendation()
+                }
+                .onChange(of: scenePhase) { _, newPhase in
+                    syncEngine.handleScenePhaseChange(isActive: newPhase == .active)
+
+                    if newPhase == .active {
+                        // Re-import any photos taken while app was inactive
+                        if photoObserver.authorizationStatus == .authorized ||
+                           photoObserver.authorizationStatus == .limited {
+                            photoObserver.performInitialImport()
+                        }
+                        // Check storage optimization on every foreground return (item 6)
+                        storageManager.checkOptimizationRecommendation()
+                    }
                 }
         }
         .modelContainer(sharedModelContainer)

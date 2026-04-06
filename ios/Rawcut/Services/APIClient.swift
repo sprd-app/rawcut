@@ -390,6 +390,155 @@ enum APIClient {
         return try JSONDecoder().decode(DownloadURL.self, from: data).url
     }
 
+    // MARK: - Chunked Upload
+
+    struct ChunkedUploadInit: Codable, Sendable {
+        let upload_id: String
+        let blob_name: String
+        let chunk_size: Int
+        let total_chunks: Int
+    }
+
+    struct ChunkedCommitResponse: Codable, Sendable {
+        let blob_name: String
+        let size: Int
+        let asset_id: String
+    }
+
+    static func initChunkedUpload(
+        filename: String,
+        fileSize: Int,
+        mediaType: String,
+        contentType: String,
+        contentHash: String?,
+        authToken: String
+    ) async throws -> ChunkedUploadInit {
+        guard let url = URL(string: "\(baseURL)/api/upload/chunked/init") else {
+            throw URLError(.badURL)
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        struct Body: Encodable {
+            let filename: String
+            let file_size: Int
+            let media_type: String
+            let content_type: String
+            let content_hash: String?
+        }
+        request.httpBody = try JSONEncoder().encode(Body(
+            filename: filename, file_size: fileSize,
+            media_type: mediaType, content_type: contentType,
+            content_hash: contentHash
+        ))
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validateResponse(response)
+        return try JSONDecoder().decode(ChunkedUploadInit.self, from: data)
+    }
+
+    static func uploadChunk(
+        uploadId: String,
+        chunkIndex: Int,
+        data chunkData: Data,
+        authToken: String
+    ) async throws {
+        guard let url = URL(string: "\(baseURL)/api/upload/chunked/\(uploadId)/\(chunkIndex)") else {
+            throw URLError(.badURL)
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+        request.httpBody = chunkData
+        let (_, response) = try await URLSession.shared.data(for: request)
+        try validateResponse(response)
+    }
+
+    static func commitChunkedUpload(
+        uploadId: String,
+        authToken: String
+    ) async throws -> ChunkedCommitResponse {
+        guard let url = URL(string: "\(baseURL)/api/upload/chunked/\(uploadId)/commit") else {
+            throw URLError(.badURL)
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validateResponse(response)
+        return try JSONDecoder().decode(ChunkedCommitResponse.self, from: data)
+    }
+
+    // MARK: - Video Streaming
+
+    /// Get a streaming URL for a cloud-only video (supports Range requests for AVPlayer).
+    static func getMediaStreamURL(blobName: String, authToken: String) async throws -> String {
+        let encoded = blobName.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? blobName
+        guard let url = URL(string: "\(baseURL)/api/storage/media/\(encoded)/stream") else {
+            throw URLError(.badURL)
+        }
+        // The endpoint returns a 302 redirect to a signed URL.
+        // We want the redirect destination, not to follow it.
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
+
+        let config = URLSessionConfiguration.default
+        let session = URLSession(configuration: config)
+        // Follow the redirect and return the final URL
+        let (_, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
+              let finalURL = response.url else {
+            throw URLError(.badServerResponse)
+        }
+        return finalURL.absoluteString
+    }
+
+    // MARK: - Quota
+
+    struct QuotaResponse: Codable, Sendable {
+        let used_bytes: Int64
+        let quota_bytes: Int64
+        let used_percentage: Double
+        let is_over_quota: Bool
+    }
+
+    static func getQuota(authToken: String) async throws -> QuotaResponse {
+        guard let url = URL(string: "\(baseURL)/api/storage/quota") else {
+            throw URLError(.badURL)
+        }
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validateResponse(response)
+        return try JSONDecoder().decode(QuotaResponse.self, from: data)
+    }
+
+    // MARK: - Sync Health
+
+    struct SyncHealthResponse: Codable, Sendable {
+        let total_assets: Int
+        let synced_count: Int
+        let failed_count: Int
+        let pending_count: Int
+        let uploading_count: Int
+        let success_rate: Double
+        let sync_lag_seconds: Double?
+        let alert: String?
+    }
+
+    static func getSyncHealth(authToken: String) async throws -> SyncHealthResponse {
+        guard let url = URL(string: "\(baseURL)/api/sync/health") else {
+            throw URLError(.badURL)
+        }
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validateResponse(response)
+        return try JSONDecoder().decode(SyncHealthResponse.self, from: data)
+    }
+
     // MARK: - Helpers
 
     private static func validateResponse(_ response: URLResponse) throws {

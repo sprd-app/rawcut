@@ -14,22 +14,27 @@ struct SettingsView: View {
 
     @State private var showFreeSpaceConfirm = false
     @State private var spaceEstimate: StorageManager.SpaceRecoveryEstimate?
+    @State private var iCloudPhotosEnabled: Bool = false
+    @State private var cloudHealth: APIClient.SyncHealthResponse?
+    @State private var isLoadingHealth = false
 
     var body: some View {
-        ZStack {
-            Color.rcBackground.ignoresSafeArea()
-
-            List {
-                accountSection
-                storageSection
-                syncSection
-                aboutSection
+        List {
+            accountSection
+            if iCloudPhotosEnabled {
+                iCloudWarningSection
             }
-            .scrollContentBackground(.hidden)
-            .listStyle(.insetGrouped)
+            cloudHealthSection
+            storageSection
+            syncSection
+            aboutSection
         }
+        .listStyle(.insetGrouped)
         .navigationTitle("Settings")
         .toolbarColorScheme(.dark, for: .navigationBar)
+        .onAppear {
+            iCloudPhotosEnabled = FileManager.default.ubiquityIdentityToken != nil
+        }
     }
 
     // MARK: - Account Section
@@ -38,14 +43,13 @@ struct SettingsView: View {
         Section {
             HStack(spacing: Spacing.md) {
                 Image(systemName: "person.circle.fill")
-                    .font(.system(size: 40))
-                    .foregroundStyle(Color.rcAccent)
+                    .font(.system(size: 36))
+                    .foregroundStyle(Color.rcTextSecondary)
                     .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: Spacing.xs) {
                     Text(authManager.displayName ?? "User")
                         .font(.rcTitleMedium)
-                        .foregroundStyle(Color.rcTextPrimary)
 
                     if authManager.isAuthenticated {
                         Text("Signed in with Apple")
@@ -56,7 +60,6 @@ struct SettingsView: View {
 
                 Spacer()
             }
-            .listRowBackground(Color.rcSurface)
 
             if authManager.isAuthenticated {
                 Button(role: .destructive) {
@@ -65,13 +68,170 @@ struct SettingsView: View {
                     Text("Sign Out")
                         .font(.rcBody)
                 }
-                .listRowBackground(Color.rcSurface)
-                .accessibilityLabel("Sign Out")
+                    .accessibilityLabel("Sign Out")
             }
         } header: {
             Text("Account")
-                .font(.rcCaption)
-                .foregroundStyle(Color.rcTextSecondary)
+        }
+    }
+
+    // MARK: - iCloud Warning Section
+
+    private var iCloudWarningSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: Spacing.sm) {
+                HStack(spacing: Spacing.sm) {
+                    Image(systemName: "exclamationmark.icloud.fill")
+                        .foregroundStyle(Color.rcWarning)
+                    Text("iCloud Photos Enabled")
+                        .font(.rcBodyMedium)
+                        .foregroundStyle(Color.rcTextPrimary)
+                }
+
+                Text("Your media is uploading to both iCloud and rawcut. To avoid double storage costs, go to Settings → iCloud → Photos and turn off sync.")
+                    .font(.rcCaption)
+                    .foregroundStyle(Color.rcTextSecondary)
+
+                Button {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                } label: {
+                    Text("Open iPhone Settings")
+                        .font(.rcCaptionBold)
+                        .foregroundStyle(Color.rcAccent)
+                }
+            }
+            .padding(.vertical, Spacing.xs)
+        } header: {
+            Text("Warning")
+                .foregroundStyle(Color.rcWarning)
+        }
+    }
+
+    // MARK: - Cloud Health Section
+
+    private var cloudHealthSection: some View {
+        Section {
+            if let health = cloudHealth {
+                // Main status indicator
+                HStack(spacing: Spacing.md) {
+                    Image(systemName: healthIcon(for: health))
+                        .font(.system(size: 28))
+                        .foregroundStyle(healthColor(for: health))
+
+                    VStack(alignment: .leading, spacing: Spacing.xs) {
+                        Text(healthTitle(for: health))
+                            .font(.rcBodyMedium)
+                            .foregroundStyle(Color.rcTextPrimary)
+
+                        Text("\(health.synced_count) items safely in cloud")
+                            .font(.rcCaption)
+                            .foregroundStyle(Color.rcTextSecondary)
+                    }
+
+                    Spacer()
+
+                    Text(String(format: "%.1f%%", health.success_rate * 100))
+                        .font(.rcStat)
+                        .foregroundStyle(healthColor(for: health))
+                }
+                .padding(.vertical, Spacing.xs)
+
+                // Detail rows
+                if health.failed_count > 0 {
+                    HStack {
+                        Text("Failed uploads")
+                            .font(.rcBody)
+                            .foregroundStyle(Color.rcTextSecondary)
+                        Spacer()
+                        Text("\(health.failed_count)")
+                            .font(.rcBody)
+                            .foregroundStyle(Color.rcError)
+                    }
+                }
+
+                if health.pending_count > 0 {
+                    HStack {
+                        Text("Pending")
+                            .font(.rcBody)
+                            .foregroundStyle(Color.rcTextSecondary)
+                        Spacer()
+                        Text("\(health.pending_count)")
+                            .font(.rcBody)
+                            .foregroundStyle(Color.rcTextTertiary)
+                    }
+                }
+
+                if let alert = health.alert {
+                    HStack(spacing: Spacing.sm) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Color.rcWarning)
+                        Text(alert)
+                            .font(.rcCaption)
+                            .foregroundStyle(Color.rcWarning)
+                    }
+                }
+            } else if isLoadingHealth {
+                HStack {
+                    ProgressView()
+                    Text("Checking cloud status...")
+                        .font(.rcBody)
+                        .foregroundStyle(Color.rcTextSecondary)
+                        .padding(.leading, Spacing.sm)
+                }
+            } else {
+                Button {
+                    loadCloudHealth()
+                } label: {
+                    HStack(spacing: Spacing.sm) {
+                        Image(systemName: "checkmark.shield")
+                            .foregroundStyle(Color.rcAccent)
+                        Text("Check Cloud Health")
+                            .font(.rcBody)
+                            .foregroundStyle(Color.rcTextPrimary)
+                    }
+                }
+            }
+        } header: {
+            Text("Cloud Health")
+        }
+        .onAppear { loadCloudHealth() }
+    }
+
+    private func healthIcon(for health: APIClient.SyncHealthResponse) -> String {
+        if health.failed_count > 0 || health.alert != nil {
+            return "exclamationmark.shield.fill"
+        }
+        if health.pending_count > 0 {
+            return "arrow.triangle.2.circlepath"
+        }
+        return "checkmark.shield.fill"
+    }
+
+    private func healthColor(for health: APIClient.SyncHealthResponse) -> Color {
+        if health.failed_count > 0 || health.alert != nil { return Color.rcError }
+        if health.pending_count > 0 { return Color.rcWarning }
+        return Color.rcAccent
+    }
+
+    private func healthTitle(for health: APIClient.SyncHealthResponse) -> String {
+        if health.failed_count > 0 { return "Attention Needed" }
+        if health.pending_count > 0 { return "Syncing..." }
+        return "All Safe"
+    }
+
+    private func loadCloudHealth() {
+        guard let token = authManager.authToken else { return }
+        isLoadingHealth = true
+        Task {
+            do {
+                cloudHealth = try await APIClient.getSyncHealth(authToken: token)
+            } catch {
+                print("[Rawcut] Failed to load cloud health: \(error.localizedDescription)")
+            }
+            isLoadingHealth = false
         }
     }
 
@@ -83,7 +243,6 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: Spacing.sm) {
                 Text("Storage Usage")
                     .font(.rcBody)
-                    .foregroundStyle(Color.rcTextPrimary)
 
                 // Storage bar
                 GeometryReader { geometry in
@@ -104,22 +263,23 @@ struct SettingsView: View {
                     .foregroundStyle(Color.rcTextSecondary)
             }
             .padding(.vertical, Spacing.xs)
-            .listRowBackground(Color.rcSurface)
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Storage Usage: \(formattedStorageUsed)")
 
             // Cost comparison card
             VStack(alignment: .leading, spacing: Spacing.md) {
                 Text("Cost Comparison")
-                    .font(.rcBody)
-                    .fontWeight(.semibold)
+                    .font(.rcBodyMedium)
                     .foregroundStyle(Color.rcTextPrimary)
 
                 costRow(label: "iCloud cost:", value: iCloudCostString, color: Color.rcTextSecondary)
                 costRow(label: "rawcut cost:", value: rawcutCostString, color: Color.rcTextSecondary)
 
+                Text("Storage: Cool tier $0.01/GB + egress ~$0.087/GB")
+                    .font(.system(size: 10))
+                    .foregroundStyle(Color.rcTextTertiary)
+
                 Divider()
-                    .overlay(Color.rcSurfaceElevated)
 
                 HStack {
                     Text("You save:")
@@ -128,17 +288,14 @@ struct SettingsView: View {
                     Spacer()
                     Text(savingsString)
                         .font(.rcStat)
-                        .foregroundStyle(Color.rcAccent)
+                        .foregroundStyle(savings > 0 ? Color.rcAccent : Color.rcError)
                 }
             }
             .padding(.vertical, Spacing.xs)
-            .listRowBackground(Color.rcSurface)
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Cost Comparison: iCloud \(iCloudCostString), rawcut \(rawcutCostString), you save \(savingsString)")
         } header: {
             Text("Storage")
-                .font(.rcCaption)
-                .foregroundStyle(Color.rcTextSecondary)
         }
     }
 
@@ -165,7 +322,6 @@ struct SettingsView: View {
 
                 Text("Sync Status")
                     .font(.rcBody)
-                    .foregroundStyle(Color.rcTextPrimary)
 
                 Spacer()
 
@@ -173,28 +329,23 @@ struct SettingsView: View {
                     .font(.rcCaption)
                     .foregroundStyle(Color.rcTextSecondary)
             }
-            .listRowBackground(Color.rcSurface)
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Sync Status: \(syncHealthLabel)")
 
             HStack {
                 Text("Last synced")
                     .font(.rcBody)
-                    .foregroundStyle(Color.rcTextPrimary)
                 Spacer()
                 Text(lastSyncedText)
                     .font(.rcCaption)
                     .foregroundStyle(Color.rcTextSecondary)
             }
-            .listRowBackground(Color.rcSurface)
 
             Toggle(isOn: $syncOnWiFiOnly) {
                 Text("Sync on Wi-Fi only")
                     .font(.rcBody)
-                    .foregroundStyle(Color.rcTextPrimary)
             }
-            .tint(Color.rcAccent)
-            .listRowBackground(Color.rcSurface)
+            .tint(Color.rcToggleTint)
             .accessibilityLabel("Sync on Wi-Fi only")
 
             // Optimize Storage (like iCloud's "Optimize iPhone Storage")
@@ -208,21 +359,18 @@ struct SettingsView: View {
                         .foregroundStyle(Color.rcTextSecondary)
                 }
             }
-            .tint(Color.rcAccent)
-            .listRowBackground(Color.rcSurface)
+            .tint(Color.rcToggleTint)
             .accessibilityLabel("Optimize iPhone Storage")
 
             // Device free space indicator
             HStack {
                 Text("Device Free Space")
                     .font(.rcBody)
-                    .foregroundStyle(Color.rcTextPrimary)
                 Spacer()
                 Text(formattedDeviceFreeSpace)
                     .font(.rcCaption)
                     .foregroundStyle(storageManager.isStorageLow ? Color.rcError : Color.rcTextSecondary)
             }
-            .listRowBackground(Color.rcSurface)
             .onAppear { storageManager.refreshDeviceFreeSpace() }
 
             // Free Up Space
@@ -249,7 +397,6 @@ struct SettingsView: View {
                     }
                 }
             }
-            .listRowBackground(Color.rcSurface)
             .confirmationDialog(
                 "Free Up Space",
                 isPresented: $showFreeSpaceConfirm,
@@ -273,8 +420,6 @@ struct SettingsView: View {
             }
         } header: {
             Text("Sync")
-                .font(.rcCaption)
-                .foregroundStyle(Color.rcTextSecondary)
         }
     }
 
@@ -285,13 +430,11 @@ struct SettingsView: View {
             HStack {
                 Text("Version")
                     .font(.rcBody)
-                    .foregroundStyle(Color.rcTextPrimary)
                 Spacer()
                 Text(appVersion)
                     .font(.rcCaption)
                     .foregroundStyle(Color.rcTextSecondary)
             }
-            .listRowBackground(Color.rcSurface)
 
             Link(destination: URL(string: "https://rawcut.app/privacy")!) {
                 HStack {
@@ -304,12 +447,9 @@ struct SettingsView: View {
                         .foregroundStyle(Color.rcTextTertiary)
                 }
             }
-            .listRowBackground(Color.rcSurface)
             .accessibilityLabel("Open Privacy Policy")
         } header: {
             Text("About")
-                .font(.rcCaption)
-                .foregroundStyle(Color.rcTextSecondary)
         }
     }
 
@@ -346,17 +486,21 @@ struct SettingsView: View {
         return max(totalWidth * ratio, 2)
     }
 
-    /// iCloud pricing: $0.99/50GB, $2.99/200GB, $9.99/2TB
+    /// iCloud pricing: $0.99/50GB, $2.99/200GB, $9.99/2TB, $32.99/12TB
     private var iCloudCostPerMonth: Double {
         if totalStorageGB <= 5 { return 0 }
         if totalStorageGB <= 50 { return 0.99 }
         if totalStorageGB <= 200 { return 2.99 }
-        return 9.99
+        if totalStorageGB <= 2048 { return 9.99 }
+        return 32.99
     }
 
-    /// rawcut: ~$0.006/GB/month (R2 pricing)
+    /// rawcut: Azure Blob Cool tier ~$0.01/GB/month
+    /// Plus estimated egress for occasional downloads (~5% of storage per month)
     private var rawcutCostPerMonth: Double {
-        totalStorageGB * 0.006
+        let storageCost = totalStorageGB * 0.01 // Cool tier
+        let estimatedEgress = totalStorageGB * 0.05 * 0.087 // 5% downloaded at $0.087/GB
+        return storageCost + estimatedEgress
     }
 
     private var iCloudCostString: String {
@@ -367,9 +511,16 @@ struct SettingsView: View {
         String(format: "$%.2f/mo", rawcutCostPerMonth)
     }
 
+    private var savings: Double {
+        iCloudCostPerMonth - rawcutCostPerMonth
+    }
+
     private var savingsString: String {
-        let savings = max(iCloudCostPerMonth - rawcutCostPerMonth, 0)
-        return String(format: "$%.2f/mo", savings)
+        if savings >= 0 {
+            return String(format: "$%.2f/mo", savings)
+        } else {
+            return String(format: "-$%.2f/mo", abs(savings))
+        }
     }
 
     private var syncHealthColor: Color {

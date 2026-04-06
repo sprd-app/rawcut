@@ -27,6 +27,17 @@ final class StorageManager: ObservableObject {
     @Published private(set) var deviceFreeSpace: Int64 = 0
     @Published private(set) var lastAutoOptimizeDate: Date?
 
+    /// When non-nil, shows a banner recommending the user free space.
+    @Published var optimizationRecommendation: OptimizationRecommendation?
+
+    struct OptimizationRecommendation: Equatable {
+        var assetCount: Int
+        var totalBytes: Int64
+        var formattedSize: String {
+            ByteCountFormatter.string(fromByteCount: totalBytes, countStyle: .file)
+        }
+    }
+
     // MARK: - Configuration
 
     /// Threshold below which auto-optimization kicks in (default 5 GB)
@@ -76,7 +87,8 @@ final class StorageManager: ObservableObject {
 
     /// Cache a thumbnail for an asset before its local copy is deleted.
     /// Returns the file name (not full path) of the cached thumbnail.
-    private func cacheThumbnail(for phAsset: PHAsset, identifier: String) -> String? {
+    /// Runs the PHImageManager request off the main thread to avoid UI blocking.
+    private func cacheThumbnail(for phAsset: PHAsset, identifier: String) async -> String? {
         let safeId = identifier.replacingOccurrences(of: "/", with: "_")
         let fileName = "\(safeId).jpg"
         let destURL = Self.thumbnailCacheDir.appendingPathComponent(fileName)
@@ -86,29 +98,37 @@ final class StorageManager: ObservableObject {
             return fileName
         }
 
-        // Synchronous thumbnail request (300x300 is small, fast)
-        let options = PHImageRequestOptions()
-        options.deliveryMode = .highQualityFormat
-        options.isSynchronous = true
-        options.isNetworkAccessAllowed = false
+        // Async thumbnail request — yields main thread between requests
+        return await withCheckedContinuation { continuation in
+            let options = PHImageRequestOptions()
+            options.deliveryMode = .highQualityFormat
+            options.isSynchronous = false
+            options.isNetworkAccessAllowed = false
 
-        var result: String?
-        PHImageManager.default().requestImage(
-            for: phAsset,
-            targetSize: CGSize(width: 300, height: 300),
-            contentMode: .aspectFill,
-            options: options
-        ) { image, _ in
-            guard let image, let data = image.jpegData(compressionQuality: 0.7) else { return }
-            do {
-                try data.write(to: destURL)
-                result = fileName
-            } catch {
-                print("[Rawcut] Failed to cache thumbnail for \(identifier): \(error.localizedDescription)")
+            PHImageManager.default().requestImage(
+                for: phAsset,
+                targetSize: CGSize(width: 600, height: 600),
+                contentMode: .aspectFill,
+                options: options
+            ) { image, info in
+                // PHImageManager may call back multiple times (degraded then full).
+                // Only process the final delivery.
+                let isDegraded = info?[PHImageResultIsDegradedKey] as? Bool ?? false
+                guard !isDegraded else { return }
+
+                guard let image, let data = image.jpegData(compressionQuality: 0.7) else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                do {
+                    try data.write(to: destURL)
+                    continuation.resume(returning: fileName)
+                } catch {
+                    print("[Rawcut] Failed to cache thumbnail for \(identifier): \(error.localizedDescription)")
+                    continuation.resume(returning: nil)
+                }
             }
         }
-
-        return result
     }
 
     // MARK: - Space Estimation
@@ -156,11 +176,55 @@ final class StorageManager: ObservableObject {
 
     // MARK: - Auto Optimization
 
-    /// Check device storage and automatically free synced assets if needed.
-    /// Called after uploads complete and on app launch.
-    /// Frees oldest-first until device has enough headroom.
-    func autoOptimizeIfNeeded() async {
+    /// Check if storage optimization should be recommended to the user.
+    /// Instead of auto-deleting with a jarring system popup, we show a banner
+    /// that the user can tap to trigger the optimization themselves.
+    func checkOptimizationRecommendation() {
         guard optimizeStorageEnabled else { return }
+
+        refreshDeviceFreeSpace()
+        guard isStorageLow else {
+            optimizationRecommendation = nil
+            return
+        }
+
+        let estimate = estimateRecoverableSpace()
+        guard estimate.assetCount > 0 else {
+            optimizationRecommendation = nil
+            return
+        }
+
+        optimizationRecommendation = OptimizationRecommendation(
+            assetCount: estimate.assetCount,
+            totalBytes: estimate.totalBytes
+        )
+        print("[Rawcut] Storage low (\(ByteCountFormatter.string(fromByteCount: deviceFreeSpace, countStyle: .file)) free), recommending optimization: \(estimate.assetCount) assets, \(estimate.formattedSize)")
+    }
+
+    /// Execute the recommended optimization. Called when user taps the banner.
+    func executeOptimization() async -> Int {
+        let freed = await freeUpSpace()
+        lastAutoOptimizeDate = .now
+        optimizationRecommendation = nil
+        refreshDeviceFreeSpace()
+        if freed > 0 {
+            sendAutoOptimizeNotification(freedCount: freed)
+        }
+        return freed
+    }
+
+    /// Legacy auto-optimize for background sync completion.
+    /// Only runs when app is NOT active to avoid surprising the user.
+    func autoOptimizeIfNeeded(force: Bool = false) async {
+        guard optimizeStorageEnabled else { return }
+
+        // Never auto-delete when user is actively using the app
+        let appState = UIApplication.shared.applicationState
+        if appState == .active {
+            // Instead, set up a recommendation banner
+            checkOptimizationRecommendation()
+            return
+        }
 
         // Cooldown: don't run too frequently
         if let last = lastAutoOptimizeDate,
@@ -177,22 +241,24 @@ final class StorageManager: ObservableObject {
         let bytesToFree = targetFreeSpace - deviceFreeSpace
         let freed = await freeUpSpaceByBytes(bytesToFree)
 
-        // Always set cooldown to prevent rapid retries (e.g., user denies deletion or no synced assets left)
         lastAutoOptimizeDate = .now
 
         if freed > 0 {
             refreshDeviceFreeSpace()
             print("[Rawcut] Auto-optimize: freed \(freed) assets, device now has \(ByteCountFormatter.string(fromByteCount: deviceFreeSpace, countStyle: .file))")
-
             sendAutoOptimizeNotification(freedCount: freed)
-        } else {
-            print("[Rawcut] Auto-optimize: nothing to free (no synced assets or user denied)")
         }
     }
 
     /// Free synced assets oldest-first until at least `targetBytes` are freed.
+    /// Always preserves assets from the last `protectRecentDays` days.
     private func freeUpSpaceByBytes(_ targetBytes: Int64) async -> Int {
         let context = ModelContext(modelContainer)
+
+        // Protect recent media — never auto-delete assets less than 7 days old
+        let protectRecentDays = 7
+        let cutoff = Calendar.current.date(byAdding: .day, value: -protectRecentDays, to: .now) ?? .now
+
         let predicate = #Predicate<MediaAsset> { $0.syncStatusRaw == "synced" }
         let descriptor = FetchDescriptor<MediaAsset>(
             predicate: predicate,
@@ -209,13 +275,15 @@ final class StorageManager: ObservableObject {
 
             for asset in syncedAssets {
                 guard asset.cloudBlobName != nil else { continue }
+                // Never auto-delete recent assets
+                guard asset.createdDate < cutoff else { continue }
 
                 let results = PHAsset.fetchAssets(
                     withLocalIdentifiers: [asset.localIdentifier],
                     options: nil
                 )
                 if let phAsset = results.firstObject {
-                    let thumbFile = cacheThumbnail(for: phAsset, identifier: asset.localIdentifier)
+                    let thumbFile = await cacheThumbnail(for: phAsset, identifier: asset.localIdentifier)
                     asset.cachedThumbnail = thumbFile
 
                     phAssetsToDelete.append(phAsset)
@@ -250,8 +318,8 @@ final class StorageManager: ObservableObject {
 
     private func sendAutoOptimizeNotification(freedCount: Int) {
         let content = UNMutableNotificationContent()
-        content.title = "저장공간 최적화 완료"
-        content.body = "\(freedCount)개 미디어의 로컬 사본을 정리했습니다. 클라우드에 안전하게 보관 중입니다."
+        content.title = "Storage Optimized"
+        content.body = "Cleaned up local copies of \(freedCount) media items. They're safely stored in the cloud."
         content.sound = nil // silent
 
         let request = UNNotificationRequest(
@@ -294,7 +362,7 @@ final class StorageManager: ObservableObject {
                 )
                 if let phAsset = results.firstObject {
                     // Cache thumbnail before we lose the local copy
-                    let thumbFile = cacheThumbnail(for: phAsset, identifier: asset.localIdentifier)
+                    let thumbFile = await cacheThumbnail(for: phAsset, identifier: asset.localIdentifier)
                     asset.cachedThumbnail = thumbFile
 
                     phAssetsToDelete.append(phAsset)

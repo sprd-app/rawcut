@@ -205,8 +205,8 @@ struct ChatView: View {
             Spacer().frame(height: 40)
 
             Image(systemName: "film.stack")
-                .font(.system(size: 44, weight: .ultraLight))
-                .foregroundStyle(Color.rcAccent)
+                .font(.system(size: 40, weight: .thin))
+                .foregroundStyle(Color.rcTextSecondary)
 
             Text("What's your vlog about?")
                 .font(.rcTitleMedium)
@@ -223,10 +223,12 @@ struct ChatView: View {
                         Button { sendMessage(suggestion) } label: {
                             Text(suggestion)
                                 .font(.rcBody)
-                                .foregroundStyle(Color.rcAccent)
+                                .foregroundStyle(Color.rcTextPrimary)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, Spacing.md)
                                 .background(Color.rcSurface, in: RoundedRectangle(cornerRadius: 10))
+                                .overlay(RoundedRectangle(cornerRadius: 10)
+                                    .stroke(Color.rcTextTertiary.opacity(0.5), lineWidth: 0.5))
                         }
                     }
                 }
@@ -305,10 +307,10 @@ struct ChatView: View {
                         Spacer(minLength: 60)
                         Text(message.text)
                             .font(.rcBody)
-                            .foregroundStyle(.white)
+                            .foregroundStyle(Color.rcTextPrimary)
                             .padding(.horizontal, Spacing.md)
                             .padding(.vertical, 10)
-                            .background(Color.rcAccent, in: RoundedRectangle(cornerRadius: 18))
+                            .background(Color.rcSurfaceElevated, in: RoundedRectangle(cornerRadius: 16))
                     }
                 }
             }
@@ -568,7 +570,7 @@ struct ChatView: View {
                     .lineLimit(1...4)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
-                    .background(Color.rcSurface, in: RoundedRectangle(cornerRadius: 22))
+                    .background(Color.rcSurface, in: RoundedRectangle(cornerRadius: 12))
 
                 if isLoading {
                     ProgressView()
@@ -964,8 +966,7 @@ struct SessionListSheet: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                Color.rcBackground.ignoresSafeArea()
+            Group {
                 if sessions.isEmpty {
                     EmptyStateView(
                         icon: "clock.arrow.circlepath",
@@ -979,11 +980,10 @@ struct SessionListSheet: View {
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text(session.title)
                                         .font(.rcBodyMedium)
-                                        .foregroundStyle(Color.rcTextPrimary)
                                     HStack(spacing: Spacing.sm) {
                                         Text("\(session.message_count) msgs")
                                             .font(.rcCaption)
-                                            .foregroundStyle(Color.rcTextTertiary)
+                                            .foregroundStyle(.secondary)
                                         if session.has_script {
                                             Text("Script ready")
                                                 .font(.rcCaption)
@@ -992,13 +992,11 @@ struct SessionListSheet: View {
                                     }
                                 }
                             }
-                            .listRowBackground(Color.rcSurface)
                         }
                         .onDelete { indexSet in
                             for idx in indexSet { onDelete(sessions[idx]) }
                         }
                     }
-                    .scrollContentBackground(.hidden)
                 }
             }
             .navigationTitle("Sessions")
