@@ -967,14 +967,11 @@ struct SessionListSheet: View {
             ZStack {
                 Color.rcBackground.ignoresSafeArea()
                 if sessions.isEmpty {
-                    VStack(spacing: Spacing.md) {
-                        Image(systemName: "clock.arrow.circlepath")
-                            .font(.system(size: 32, weight: .ultraLight))
-                            .foregroundStyle(Color.rcTextTertiary)
-                        Text("No saved sessions")
-                            .font(.rcBody)
-                            .foregroundStyle(Color.rcTextSecondary)
-                    }
+                    EmptyStateView(
+                        icon: "clock.arrow.circlepath",
+                        title: "No Saved Sessions",
+                        description: "Your chat sessions will appear here."
+                    )
                 } else {
                     List {
                         ForEach(sessions) { session in
