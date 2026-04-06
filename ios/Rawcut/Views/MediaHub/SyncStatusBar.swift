@@ -4,6 +4,7 @@ struct SyncStatusBar: View {
     @EnvironmentObject var syncEngine: SyncEngine
     @State private var isExpanded: Bool = false
     @State private var isPulsing: Bool = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 0) {
@@ -174,8 +175,8 @@ struct SyncStatusBar: View {
         Circle()
             .fill(Color.rcAccent)
             .frame(width: 6, height: 6)
-            .opacity(isPulsing ? 0.4 : 1.0)
-            .animation(syncPulseAnimation, value: isPulsing)
+            .opacity(reduceMotion ? 1.0 : (isPulsing ? 0.4 : 1.0))
+            .animation(reduceMotion ? nil : syncPulseAnimation, value: isPulsing)
     }
 
     private func statusRow(

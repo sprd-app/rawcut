@@ -1016,6 +1016,7 @@ struct SessionListSheet: View {
 
 struct TypingIndicator: View {
     @State private var animate = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 5) {
@@ -1023,16 +1024,19 @@ struct TypingIndicator: View {
                 Circle()
                     .fill(Color.rcAccent)
                     .frame(width: 6, height: 6)
-                    .offset(y: animate ? -4 : 0)
+                    .offset(y: animate && !reduceMotion ? -4 : 0)
                     .animation(
-                        .easeInOut(duration: 0.4)
-                            .repeatForever(autoreverses: true)
-                            .delay(Double(i) * 0.15),
+                        reduceMotion ? nil :
+                            .easeInOut(duration: 0.4)
+                                .repeatForever(autoreverses: true)
+                                .delay(Double(i) * 0.15),
                         value: animate
                     )
             }
         }
+        .opacity(reduceMotion ? 0.8 : 1.0)
         .onAppear { animate = true }
+        .accessibilityLabel("AI is thinking")
     }
 }
 
