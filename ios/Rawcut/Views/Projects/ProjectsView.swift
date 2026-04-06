@@ -196,9 +196,14 @@ struct VlogDetailView: View {
                         if render?.isComplete == true {
                             ProgressView().tint(Color.rcAccent)
                         } else {
-                            Image(systemName: "film")
-                                .font(.system(size: 30, weight: .ultraLight))
-                                .foregroundStyle(Color.rcTextTertiary)
+                            VStack(spacing: Spacing.xs) {
+                                Image(systemName: "film")
+                                    .font(.system(size: 30, weight: .ultraLight))
+                                    .foregroundStyle(Color.rcTextTertiary)
+                                Text("Not yet rendered")
+                                    .font(.rcCaption)
+                                    .foregroundStyle(Color.rcTextTertiary)
+                            }
                         }
                     }
                 }
